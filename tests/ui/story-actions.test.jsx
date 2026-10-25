@@ -44,3 +44,14 @@ it('hiding a transfer operation aborts its lifetime and reopening preserves a us
   await act(async()=>{view.rerender(<Transfer client={client} visible={false} capabilities={capabilities} sessionId="current"/>);await Promise.resolve()});expect(signal.aborted).toBe(true)
   await act(async()=>{view.rerender(<Transfer client={client} visible capabilities={capabilities} sessionId="current"/>)});expect(screen.getByLabelText('恢复任务 ID')).toHaveValue('keep-this-job');expect(screen.getByRole('button',{name:'按原 ID 恢复 / 继续'})).toBeEnabled()
 })
+
+it('saved export shows recorded current-binding and retained-default roles using fixed informational labels',async()=>{
+  const Transfer=requireComponent('StoryTransfer'),dependencySummary={databases:[{databaseId:'World',version:1,uses:['asset-default']}],profiles:[{profileId:'Style',version:2,uses:['current-binding','asset-default']}]},client={exportSavedStory:async()=>({snapshot:{...saved,dependencySummary}})}
+  render(<Transfer client={client} visible capabilities={capabilities} sessionId="story"/>);fireEvent.click(screen.getByRole('button',{name:'导出完整故事存档'}))
+  expect(await screen.findByRole('heading',{name:'当前绑定'})).toBeInTheDocument();expect(screen.getByRole('heading',{name:'资产/模板默认（保留库内容）'})).toBeInTheDocument();expect(screen.getByText(/仅展示.*完整历史/u)).toBeInTheDocument();expect(screen.getAllByText('预设 Style · 版本 2')).toHaveLength(2)
+})
+
+it('legacy saved preview without a dependency summary shows not recorded instead of guessing from payloads',async()=>{
+  const Transfer=requireComponent('StoryTransfer'),client={previewSavedStory:async()=>({supported:true,conflicts:[],requirements:[],identityMode:'preserve',deferredChecks:[]})}
+  render(<Transfer client={client} visible capabilities={capabilities} sessionId="story"/>);fireEvent.change(screen.getByLabelText('故事存档 JSON'),{target:{value:JSON.stringify(saved)}});fireEvent.click(screen.getByRole('button',{name:'预检故事存档'}));expect(await screen.findByText('未记录依赖用途摘要')).toBeInTheDocument()
+})

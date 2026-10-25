@@ -2,6 +2,7 @@ import {isDeepStrictEqual} from 'node:util'
 import {copy,fail,object,StoryKitError} from './assets.mjs'
 import {storageKey} from './store.mjs'
 import {headerIdentity,headersEqual,semanticHash,serializableData,sessionIds,transferData} from './identity.mjs'
+import {buildDependencySummary,collectAssetDependencies,mergeProfileRefs,validateDependencySummary} from './dependencies.mjs'
 
 const ownerNames=['database','lastStep','gm','storyKit'],restoreOrder=['database','lastStep','context','gm','storyKit']
 const packages={database:'dsh-rp-database',lastStep:'dsh-rp-last-step',context:'dsh-rp-context',gm:'dsh-rp-gm',storyKit:'dsh-rp-story-kit',loop:'dsh-loop-studio'}
@@ -14,7 +15,7 @@ const sameSnapshots=(left,right)=>left.length===right.length&&left.every((row,in
 function fields(value,required,optional=[]){if(!object(value)||required.some(key=>!Object.hasOwn(value,key))||Object.keys(value).some(key=>!required.includes(key)&&!optional.includes(key)))fail('RESTORE_PAYLOAD_INVALID','存档字段不符合冻结合同。')}
 function policy(value){fields(value,['enabled','routes']);if(typeof value.enabled!=='boolean'||!object(value.routes))fail('RESTORE_PAYLOAD_INVALID','Loop policy 无效。');for(const[nodeId,route]of Object.entries(value.routes)){fields(route,['provider','model'],['reasoningEffort','maxTokens']);if(!nodeId||typeof route.provider!=='string'||!route.provider||typeof route.model!=='string'||!route.model||route.reasoningEffort!==undefined&&(typeof route.reasoningEffort!=='string'||!route.reasoningEffort)||route.maxTokens!==undefined&&(!Number.isSafeInteger(route.maxTokens)||route.maxTokens<1))fail('RESTORE_PAYLOAD_INVALID','Loop route 无效。')}return copy(value)}
 export function validateSavedStory(input){
-  fields(input,['format','schemaVersion','identityMode','exportedAt','selectedSessionId','sessions','pluginState','resources','requirements'],['loopPolicies'])
+  fields(input,['format','schemaVersion','identityMode','exportedAt','selectedSessionId','sessions','pluginState','resources','requirements'],['loopPolicies','dependencySummary'])
   if(input.format!=='dsh-rp-saved-story'||input.schemaVersion!==1||input.identityMode!=='preserve'||typeof input.exportedAt!=='string'||typeof input.selectedSessionId!=='string'||!Array.isArray(input.sessions)||!Array.isArray(input.resources)||!Array.isArray(input.requirements)||input.requirements.some(item=>typeof item!=='string'||!item))fail('RESTORE_PAYLOAD_INVALID','需要 exact-ID schemaVersion 1 的故事存档。')
   transferData(validationView(input))
   const snapshot=copy(input);fields(snapshot.pluginState,['database','lastStep','gm','storyKit'],['context']);snapshot.pluginState.context??=null
@@ -31,14 +32,34 @@ export function validateSavedStory(input){
   if(seen.size!==byId.size)fail('RESTORE_PAYLOAD_INVALID','存档包含所选故事 ancestry 之外的 Session。')
   snapshot.sessions=ordered
   if(snapshot.loopPolicies!==undefined){if(!Array.isArray(snapshot.loopPolicies))fail('RESTORE_PAYLOAD_INVALID','Loop policy 列表无效。');const ids=new Set();for(const row of snapshot.loopPolicies){fields(row,['sessionId','policy']);if(!seen.has(row.sessionId)||ids.has(row.sessionId))fail('RESTORE_PAYLOAD_INVALID','Loop policy 的会话范围无效。');ids.add(row.sessionId);row.policy=policy(row.policy)}}
+  if(snapshot.dependencySummary!==undefined)validateDependencySummary(snapshot.dependencySummary)
   return snapshot
 }
 const safeCode=error=>typeof error?.code==='string'&&/^[A-Z0-9_-]+$/u.test(error.code)?error.code:error?.name==='AbortError'?'CANCELLED':'UNAVAILABLE'
 export function createSavedStoryCoordinator({store,host,getOwner}){
   const has=(name,methods)=>{const service=getOwner(name);return!!service&&methods.every(method=>typeof service[method]==='function')&&service.available?.()!==false}
   const compatible=()=>getOwner('database')?.apiVersion===2&&getOwner('gm')?.apiVersion===1
-  const exportAvailable=()=>compatible()&&host.readable()&&ownerNames.every(name=>has(name,['exportState','contentRevision']))&&(!getOwner('context')||has('context',['exportState','contentRevision']))&&has('gm',['binding'])
-  const restoreAvailable=()=>compatible()&&host.restorable()&&ownerNames.every(name=>has(name,['preflightRestore','restoreState','contentRevision']))&&has('gm',['binding','reserveRestore','activateRestored'])
+  const exportAvailable=()=>compatible()&&host.readable()&&ownerNames.every(name=>has(name,['exportState','contentRevision']))&&(!getOwner('context')||has('context',['exportState','contentRevision']))&&(!getOwner('loop')||has('loop',['inspect','savePolicy']))&&has('gm',['binding'])
+  const restoreAvailable=()=>compatible()&&host.restorable()&&ownerNames.every(name=>has(name,['preflightRestore','restoreState','contentRevision']))&&has('gm',['binding','reserveRestore','activateRestored'])&&has('lastStep',['profile'])
+  async function initialProfiles(ids,signal,code){const refs=[];for(const sessionId of ids){const binding=await getOwner('gm').binding({sessionId,signal}),profile=binding?.profile;if(typeof profile?.profileId!=='string'||!profile.profileId||!Number.isSafeInteger(profile.version)||profile.version<1)throw new StoryKitError(code,'缺少可解析的 GM 初始文风引用。',409,[{owner:'gm',ref:{sessionId}}]);refs.push(profile)}return mergeProfileRefs(refs)}
+  async function summary(defaults,sessionId,signal){if(!has('database',['effectiveV2'])||!has('lastStep',['state']))return undefined;try{const database=await getOwner('database').effectiveV2({sessionId,signal}),lastStep=await getOwner('lastStep').state(sessionId,signal);if(!Array.isArray(database.binding?.sources)||typeof lastStep.binding?.profileId!=='string'||!Number.isSafeInteger(lastStep.binding?.version))return undefined;return buildDependencySummary(defaults,{sources:database.binding.sources,profile:{profileId:lastStep.binding.profileId,version:lastStep.binding.version}})}catch(error){if(error?.name==='AbortError')throw error;return undefined}}
+  async function verifyLibraries(dependencies,ids,signal){
+    const profiles=mergeProfileRefs(dependencies.additionalProfileRefs,await initialProfiles(ids,signal,'RESTORE_REQUIREMENT_MISSING'))
+    const missing=(owner,ref)=>new StoryKitError('RESTORE_REQUIREMENT_MISSING','固定资产或初始来源的精确库版本尚未恢复或暂不可读。',409,[{owner,ref:copy(ref)}])
+    for(const ref of dependencies.additionalDatabaseRefs){
+      if(!has('database',['database']))throw missing('database',ref)
+      let result
+      try{result=await getOwner('database').database({...ref,signal})}catch(error){if(error?.name==='AbortError')throw error;throw missing('database',ref)}
+      if(result?.database?.id!==ref.databaseId||result.database.version!==ref.version)throw missing('database',ref)
+    }
+    for(const ref of profiles){
+      if(!has('lastStep',['profile']))throw missing('lastStep',ref)
+      let result
+      try{result=await getOwner('lastStep').profile(copy(ref),signal)}catch(error){if(error?.name==='AbortError')throw error;throw missing('lastStep',ref)}
+      if(result?.profile?.id!==ref.profileId||result.profile.version!==ref.version)throw missing('lastStep',ref)
+    }
+  }
+  async function exportOwner(name,args,refs){try{return await getOwner(name).exportState(args)}catch(error){if(error?.code!=='EXPORT_REQUIREMENT_MISSING')throw error;const idField=name==='database'?'databaseId':'profileId',candidate=error.ref??error,safe=typeof candidate?.[idField]==='string'&&Number.isSafeInteger(candidate.version)&&candidate.version>0?[{[idField]:candidate[idField],version:candidate.version}]:refs;throw new StoryKitError('EXPORT_REQUIREMENT_MISSING','缺少明确引用的固定库版本；未替换为其他版本。',409,(safe.length?safe:[null]).map(ref=>({code:'EXPORT_REQUIREMENT_MISSING',owner:name,...ref?{ref}:{}})))}}
   async function readChain(sessionId,signal){const result=[],seen=new Set();let id=sessionId;while(id!=null){if(seen.has(id))fail('RESTORE_PAYLOAD_INVALID','会话 ancestry 循环。');seen.add(id);const observed=await host.readSession({sessionId:id,signal}),inbox=observed.projections?.values?.inbox;if(inbox?.['next-turn']?.length||inbox?.['next-step']?.length)fail('EXPORT_CHANGED','故事仍有待执行输入，请处理后显式重试。',409);if(!Number.isSafeInteger(observed.inheritedEventCount)||observed.inheritedEventCount<0||observed.inheritedEventCount>observed.events.length)fail('EXPORT_SOURCE_METADATA_MISSING','缺少权威 inheritedEventCount。',409);result.unshift({header:copy(observed.header),events:copy(observed.events),inheritedEventCount:observed.inheritedEventCount});id=observed.header.parentSession??null}return result}
   const journal=async()=>Object.values((await store.rawState()).restoreJobs??{})
   async function inspect(input,{restoreId,signal}={}){
@@ -51,13 +72,17 @@ export function createSavedStoryCoordinator({store,host,getOwner}){
     if(getOwner('gm')?.apiVersion!==1)requirements.push(packages.gm+':api-v1')
     for(const name of ownerNames)if(!has(name,['preflightRestore','restoreState','contentRevision']))requirements.push(packages[name])
     if(!has('gm',['reserveRestore','activateRestored','binding']))requirements.push(packages.gm)
+    if(!has('lastStep',['profile']))requirements.push(packages.lastStep+':profile-read')
+    let dependencies
+    try{dependencies=collectAssetDependencies(snapshot.pluginState.storyKit)}catch{conflicts.push({code:'RESTORE_PAYLOAD_INVALID',id:'storyKit-defaults'})}
+    if(dependencies?.additionalDatabaseRefs.length&&!has('database',['database']))requirements.push(packages.database+':library-read')
     const knownPackages=new Set([...ownerNames.map(name=>packages[name]),...getOwner('context')?[packages.context]:[],...getOwner('loop')?[packages.loop]:[]])
     for(const name of snapshot.requirements)if(!knownPackages.has(name))requirements.push(name)
     for(const session of snapshot.sessions){
       signal?.throwIfAborted();const other=jobs.find(item=>item.restoreId!==(job?.restoreId??restoreId)&&item.sessionIds?.includes(session.header.id))
       if(other){conflicts.push({code:'RESTORE_ID_CONFLICT',id:session.header.id});continue}
       const existing=await host.statSession({sessionId:session.header.id,signal})
-      if(existing&&(!job?.ownedIds?.includes(session.header.id)||typeof host.checkExisting==='function'&&!await host.checkExisting({session,signal,allowSuffix:job.resumeStarted?.includes(session.header.id)||job.resumed?.includes(session.header.id)||job.activationStarted===true}))){conflicts.push({code:'RESTORE_ID_CONFLICT',id:session.header.id});continue}
+      if(existing&&(!job?.createdIds?.includes(session.header.id)||typeof host.checkExisting==='function'&&!await host.checkExisting({session,signal,allowSuffix:job.resumeStarted?.includes(session.header.id)||job.resumed?.includes(session.header.id)||job.activationStarted===true}))){conflicts.push({code:'RESTORE_ID_CONFLICT',id:session.header.id});continue}
       try{requirements.push(...(await host.analyzeSession({session,signal})).requirements)}catch(error){conflicts.push({code:safeCode(error),id:session.header.id})}
     }
     const finalizing=job?.activationStarted===true&&ownerNames.every(name=>job.plugins?.includes(name))&&(snapshot.pluginState.context===null||job.plugins?.includes('context'))
@@ -83,19 +108,20 @@ export function createSavedStoryCoordinator({store,host,getOwner}){
     minimalSnapshot(input)
     const fingerprint=snapshotFingerprint(input),key=storageKey(restoreId),prior=(await store.rawState()).restoreJobs?.[key]
     if(prior&&prior.fingerprint!==fingerprint)fail('RESTORE_ID_CONFLICT','restoreId 已用于不同内容或会话集合。',409)
-    if(prior?.status==='complete')return{status:'complete',sessionId:input.selectedSessionId,diagnostics:[]}
+    if(prior?.status==='complete'){if(input.sessions.some(session=>!prior.createdIds?.includes(session.header.id)))fail('RESTORE_ID_CONFLICT','旧任务没有可验证的 Session 创建记录，不能认领既有 ID。',409);return{status:'complete',sessionId:input.selectedSessionId,diagnostics:[]}}
     const snapshot=validateSavedStory(input),ids=snapshot.sessions.map(item=>item.header.id)
     const preview=await inspect(snapshot,{restoreId,signal})
     if(!preview.supported){const code=preview.conflicts[0]?.code??'RESTORE_REQUIREMENT_MISSING';throw new StoryKitError(code,'存档尚未通过身份、内容或依赖预检；目标未开始导入。',409,[...preview.conflicts,...preview.requirements.map(requirement=>({code:'RESTORE_REQUIREMENT_MISSING',requirement}))])}
-    let job=(await store.updateInternal(data=>{data.restoreJobs??={};const previous=data.restoreJobs[key];if(previous)return{changed:false,result:{job:previous}};const next={restoreId,fingerprint,sessionIds:ids,selectedSessionId:snapshot.selectedSessionId,status:'pending',ownedIds:[],imported:[],validated:[],plugins:[],resumeStarted:[],resumed:[],loopApplied:[],contextDisabled:[],reserved:false,activationStarted:false,createdAt:new Date().toISOString()};data.restoreJobs[key]=next;return{result:{job:next}}})).job
+    let job=(await store.updateInternal(data=>{data.restoreJobs??={};const previous=data.restoreJobs[key];if(previous)return{changed:false,result:{job:previous}};const next={restoreId,fingerprint,sessionIds:ids,selectedSessionId:snapshot.selectedSessionId,status:'pending',createdIds:[],imported:[],validated:[],plugins:[],resumeStarted:[],resumed:[],loopApplied:[],contextDisabled:[],reserved:false,activationStarted:false,createdAt:new Date().toISOString()};data.restoreJobs[key]=next;return{result:{job:next}}})).job
     const add=async(field,value)=>{job=await mark(restoreId,fingerprint,{[field]:[...new Set([...(job[field]??[]),value])]})}
     try{
       signal?.throwIfAborted()
-      if(!job.reserved){await getOwner('gm').reserveRestore({restoreId,sessionIds:ids,signal});job=await mark(restoreId,fingerprint,{reserved:true,ownedIds:ids})}
-      for(const session of snapshot.sessions){const id=session.header.id;signal?.throwIfAborted();const existing=await host.statSession({sessionId:id,signal});if(!job.imported.includes(id)||!existing){await host.writeSession({session,owned:job.ownedIds.includes(id),signal});await add('imported',id)}if(!job.validated.includes(id)){await host.coldValidate({session,signal});await add('validated',id)}}
+      if(!job.reserved){await getOwner('gm').reserveRestore({restoreId,sessionIds:ids,signal});job=await mark(restoreId,fingerprint,{reserved:true})}
+      for(const session of snapshot.sessions){const id=session.header.id;signal?.throwIfAborted();const existing=await host.statSession({sessionId:id,signal});if(!job.imported.includes(id)||!existing){await host.writeSession({session,owned:job.createdIds?.includes(id)===true,signal,onCreated:()=>add('createdIds',id)});await add('imported',id)}if(!job.validated.includes(id)){await host.coldValidate({session,signal});await add('validated',id)}}
       for(const name of restoreOrder){if(snapshot.pluginState[name]===null||job.plugins.includes(name))continue;signal?.throwIfAborted();const owner=getOwner(name),{revision}=await owner.contentRevision({signal}),result=await owner.restoreState({restoreId,sessionIds:ids,state:snapshot.pluginState[name],expectedRevision:revision,signal});if(!Array.isArray(result.restoredSessionIds)||ids.some(id=>!result.restoredSessionIds.includes(id)))fail('RESTORE_REQUIREMENT_MISSING','插件尚未确认全部目标会话状态。',409);await add('plugins',name)}
+      await verifyLibraries(collectAssetDependencies(snapshot.pluginState.storyKit),ids,signal)
       if(snapshot.pluginState.context===null&&getOwner('context'))for(const id of ids){if(job.contextDisabled.includes(id))continue;const context=getOwner('context'),state=await context.state({sessionId:id,signal});if(!object(state.settings)||!Number.isSafeInteger(state.revision))fail('RESTORE_REQUIREMENT_MISSING','Context 配置响应无效。',409);if(state.settings.enabled!==false)await context.configure({sessionId:id,settings:{...state.settings,enabled:false},expectedRevision:state.revision,signal});await add('contextDisabled',id)}
-      for(const session of snapshot.sessions){if(job.resumed.includes(session.header.id))continue;signal?.throwIfAborted();if(!job.resumeStarted?.includes(session.header.id))await add('resumeStarted',session.header.id);await host.resumeSession({session,signal});await add('resumed',session.header.id)}
+      for(const session of snapshot.sessions){signal?.throwIfAborted();if(!job.resumeStarted?.includes(session.header.id))await add('resumeStarted',session.header.id);await host.resumeSession({session,signal});if(!job.resumed.includes(session.header.id))await add('resumed',session.header.id)}
       for(const row of snapshot.loopPolicies??[]){
         signal?.throwIfAborted();const loop=getOwner('loop'),view=await loop.inspect(row.sessionId,signal)
         if(Object.keys(row.policy.routes).some(id=>!view.graph?.nodes?.some(node=>node.id===id&&node.control==='route')))fail('RESTORE_REQUIREMENT_MISSING','恢复后的实际执行图不支持保存的 route；配置已保留，尚未激活。',409)
@@ -108,7 +134,7 @@ export function createSavedStoryCoordinator({store,host,getOwner}){
       if(!await confirmed())fail('RESTORE_REQUIREMENT_MISSING','GM 尚未确认恢复激活。',409)
       await mark(restoreId,fingerprint,{status:'complete',errorCode:null})
       return{status:'complete',sessionId:snapshot.selectedSessionId,diagnostics:[]}
-    }catch(error){const code=safeCode(error),status=code==='RESTORE_PAYLOAD_INVALID'?'failed':'pending';await mark(restoreId,fingerprint,{status,errorCode:code});return{status,sessionId:snapshot.selectedSessionId,diagnostics:[{code,message:'恢复进度已保留，故事尚未完成激活；请修复明确依赖后使用同一恢复任务 ID 继续。'}]}}
+    }catch(error){const code=safeCode(error),status=code==='RESTORE_PAYLOAD_INVALID'?'failed':'pending';await mark(restoreId,fingerprint,{status,errorCode:code});if(code==='RESTORE_ID_CONFLICT')throw new StoryKitError(code,'目标 ID 没有本任务的创建证据，或已被其他操作占用；未认领该 Session。',409);return{status,sessionId:snapshot.selectedSessionId,diagnostics:[{code,message:'恢复进度已保留，故事尚未完成激活；请修复明确依赖后使用同一恢复任务 ID 继续。'}]}}
   }
   return{
     exportAvailable,previewAvailable:restoreAvailable,restoreAvailable,
@@ -123,15 +149,17 @@ export function createSavedStoryCoordinator({store,host,getOwner}){
         for(const name of names)before[name]=(await getOwner(name).contentRevision({signal:combined})).revision
         const loopPolicies=[],loopRevisions={}
         if(getOwner('loop')){if(!has('loop',['inspect','savePolicy']))fail('RESTORE_REQUIREMENT_MISSING','Loop policy 服务不完整。',409);for(const id of ids){const view=await getOwner('loop').inspect(id,combined);loopPolicies.push({sessionId:id,policy:policy(view.effectivePolicy)});loopRevisions[id]=view.revision}}
-        for(const name of names)pluginState[name]=await getOwner(name).exportState({sessionIds:ids,signal:combined})
+        pluginState.storyKit=await getOwner('storyKit').exportState({sessionIds:ids,signal:combined})
+        const dependencies=collectAssetDependencies(pluginState.storyKit),additionalProfileRefs=mergeProfileRefs(dependencies.additionalProfileRefs,await initialProfiles(ids,combined,'EXPORT_REQUIREMENT_MISSING')),dependencySummary=await summary(dependencies,sessionId,combined)
+        for(const name of names){if(name==='storyKit')continue;const args={sessionIds:ids,signal:combined,...name==='database'?{additionalDatabaseRefs:dependencies.additionalDatabaseRefs}:name==='lastStep'?{additionalProfileRefs}:{}};pluginState[name]=await exportOwner(name,args,name==='database'?dependencies.additionalDatabaseRefs:name==='lastStep'?additionalProfileRefs:[])}
         for(const name of names){const after=(await getOwner(name).contentRevision({signal:combined})).revision;if(after!==before[name]||pluginState[name].revision!==after)fail('EXPORT_CHANGED','故事内容在导出期间变化，请显式重试。',409)}
         if(!sameSnapshots(sessions,await readChain(sessionId,combined)))fail('EXPORT_CHANGED','会话事件在导出期间变化，请显式重试。',409)
         if(getOwner('loop'))for(const row of loopPolicies){const view=await getOwner('loop').inspect(row.sessionId,combined);if(view.revision!==loopRevisions[row.sessionId]||!isDeepStrictEqual(view.effectivePolicy,row.policy))fail('EXPORT_CHANGED','Loop policy 在导出期间变化。',409)}
-        const snapshot=validateSavedStory({format:'dsh-rp-saved-story',schemaVersion:1,identityMode:'preserve',exportedAt:new Date().toISOString(),selectedSessionId:sessionId,sessions,pluginState,resources:[],requirements:[...names.map(name=>packages[name]),...getOwner('loop')?[packages.loop]:[]],...getOwner('loop')?{loopPolicies}:{}})
+        const snapshot=validateSavedStory({format:'dsh-rp-saved-story',schemaVersion:1,identityMode:'preserve',exportedAt:new Date().toISOString(),selectedSessionId:sessionId,sessions,pluginState,resources:[],requirements:[...names.map(name=>packages[name]),...getOwner('loop')?[packages.loop]:[]],...getOwner('loop')?{loopPolicies}:{},...dependencySummary?{dependencySummary}:{}})
         return{snapshot}
       })
     },
-    async previewSavedStory({snapshot,signal}){const result=await inspect(snapshot,{signal});return Object.fromEntries(['supported','conflicts','requirements','identityMode','deferredChecks'].map(key=>[key,result[key]]))},
+    async previewSavedStory({snapshot,signal}){const result=await inspect(snapshot,{signal});return{...Object.fromEntries(['supported','conflicts','requirements','identityMode','deferredChecks'].map(key=>[key,result[key]])),...result.snapshot?.dependencySummary?{dependencySummary:copy(result.snapshot.dependencySummary)}:{}}},
     async restoreSavedStory(input){const pending=(queues.get(store.storageKey)??Promise.resolve()).then(()=>execute(input)),settled=pending.then(()=>{},()=>{});queues.set(store.storageKey,settled);void settled.then(()=>{if(queues.get(store.storageKey)===settled)queues.delete(store.storageKey)});return pending},
   }
 }

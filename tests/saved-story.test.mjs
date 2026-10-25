@@ -51,7 +51,8 @@ test('restart continues an interrupted exact log write and owner-state phase wit
 test('deferred route failure stays restoring/pending until actual graph supports the preserved node',async t=>{
   const{snapshot:bundle}=await snapshot(t),destination=await savedFixture(t);destination.flags.badNode=true
   const first=await coordinator(destination).restoreSavedStory({snapshot:bundle,restoreId:'routes'});assert.equal(first.status,'pending');assert.equal(destination.bindings.get('child').status,'restoring');assert.equal(destination.log.includes('gm.activate'),false)
-  destination.flags.badNode=false;destination.restart();const next=await coordinator(destination).restoreSavedStory({snapshot:bundle,restoreId:'routes'});assert.equal(next.status,'complete');assert.deepEqual(destination.loopPolicies.get('child'),bundle.loopPolicies[1].policy);assert.equal(destination.counters().creates,2)
+  const resumesBefore=destination.log.filter(item=>item.startsWith('session.resume:')).length
+  destination.flags.badNode=false;destination.restart();assert.equal(destination.live.size,0);const next=await coordinator(destination).restoreSavedStory({snapshot:bundle,restoreId:'routes'});assert.equal(next.status,'complete');assert.deepEqual(destination.loopPolicies.get('child'),bundle.loopPolicies[1].policy);assert.deepEqual(destination.counters(),{creates:2,modelCalls:0,toolCalls:0});assert.equal(destination.live.size,2);assert.equal(destination.log.filter(item=>item.startsWith('session.resume:')).length,resumesBefore+2)
 })
 test('absent source Context is null and destination Context is configured disabled rather than given fabricated state',async t=>{
   const{snapshot:bundle}=await snapshot(t,{context:false,loop:false}),destination=await savedFixture(t,{context:false,loop:false});assert.equal(bundle.pluginState.context,null);destination.services.context=destination.configureContext()
@@ -87,4 +88,9 @@ test('a lost activation acknowledgement is finalized from actual non-restoring b
   destination.services.gm.activateRestored=async input=>{calls++;await activate(input);if(calls===1)throw Object.assign(new Error('lost acknowledgement'),{code:'UNAVAILABLE',status:503})}
   assert.equal((await coordinator(destination).restoreSavedStory({snapshot:bundle,restoreId:'activation-intent'})).status,'pending');assert.equal(destination.bindings.get('child').status,'active')
   destination.restart();assert.equal((await coordinator(destination).restoreSavedStory({snapshot:bundle,restoreId:'activation-intent'})).status,'complete');assert.equal(calls,1);assert.deepEqual(destination.counters(),{creates:2,modelCalls:0,toolCalls:0})
+})
+
+test('present but incompatible Loop service disables export capability consistently with execution',async t=>{
+  const source=await savedFixture(t,{source:true});source.services.loop={inspect:async()=>{throw new Error('must not call incompatible service')}}
+  const owner=coordinator(source);assert.equal(owner.exportAvailable(),false);await assert.rejects(owner.exportSavedStory({sessionId:'child'}),{code:'RESTORE_REQUIREMENT_MISSING'})
 })

@@ -50,6 +50,10 @@ PNG 读取优先 ccv3，否则 chara；支持常见 tEXt 编码。优先元数�
 
 在目标环境预检文件，记录“恢复任务 ID”，再按原 ID 恢复。目标已有同名 Session ID 时先报告冲突；固定内容 ID/版本只有内容相同才可复用。中断后使用**相同文件、同一恢复任务 ID**继续，进度由服务端 journal 保留。
 
+GM reservation 是执行门。只有宿主成功 create 并 flush、且任务已持久记录创建证据的 Session ID 才能续写。若在 create/flush 后、创建证据落盘前崩溃，重启无法自动确认归属：返回 RESTORE_ID_CONFLICT 并保留现场，需要明确的 owner 处理或空目标，不能仅凭相同内容接管。
+
+存档同时保留固定资产/审阅模板的 typed 默认库依赖，以及 GM 初始文风引用。即使当前故事明确选择空 sources 或 builtin，这些旧版本仍可作为被动库内容恢复，draft 保持 draft。当前文风和 overlay 继续由 LastStep 的实际绑定决定；GM.profile 只表示启动来源。依赖用途摘要以“当前绑定”和“资产/模板默认”展示已记录信息，旧存档显示未记录；它不决定恢复权限或绑定。
+
 预检若列出 LOOP_NODE_VALIDATION，表示基础依赖通过，实际节点兼容性将在暂存、冷验证与无 prompt resume 后检查。节点、模型或插件缺失时保持 pending/未激活，保留原路由。Context 在来源环境缺席时记录 null；目标若装有 Context，只对恢复会话配置 disabled。详见 [存档与传输](docs/transfer.md)。
 
 ## 开发与验证

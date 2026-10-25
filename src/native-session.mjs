@@ -61,13 +61,18 @@ export function createNativeSessionAdapter(ctx){
       let handle
       try{handle=await get('sessionPersistence').open(session.header.id,'read',{signal});const{events}=await handle.read(0,undefined,{signal});return headersEqual(handle.header,session.header)&&handle.inheritedEventCount===session.inheritedEventCount&&Array.isArray(events)&&(events.length<=session.events.length||allowSuffix&&resumeSuffix(events,session.events.length))&&isDeepStrictEqual(events.slice(0,session.events.length),session.events.slice(0,events.length))}finally{await handle?.close()}
     },
-    async writeSession({session,owned,signal}){
+    async writeSession({session,owned,signal,onCreated}){
       if(!restorable())fail('RESTORE_REQUIREMENT_MISSING','宿主恢复接口不可用。',409)
       const existing=await statSession({sessionId:session.header.id,signal})
       if(existing&&!owned)fail('RESTORE_ID_CONFLICT','目标已存在相同 Session ID。',409)
       let handle
       try{
-        handle=existing?await get('sessionPersistence').open(session.header.id,'write',{signal}):await get('sessionPersistence').create(copy(session.header),{inheritedEventCount:session.inheritedEventCount,signal})
+        if(existing)handle=await get('sessionPersistence').open(session.header.id,'write',{signal})
+        else{
+          try{handle=await get('sessionPersistence').create(copy(session.header),{inheritedEventCount:session.inheritedEventCount,signal})}catch(error){if(['SessionAlreadyExistsError','SessionAlreadyOwnedError'].includes(error?.name)||['SESSION_ALREADY_EXISTS','SESSION_ALREADY_OWNED'].includes(error?.code))fail('RESTORE_ID_CONFLICT','目标 ID 在公开 create 前被其他操作占用。',409);throw error}
+          await handle.flush()
+          await onCreated?.()
+        }
         const current=await handle.read(0,undefined,{signal}),events=current.events
         if(!headersEqual(handle.header,session.header)||handle.inheritedEventCount!==session.inheritedEventCount||events.length>session.events.length||!isDeepStrictEqual(events,session.events.slice(0,events.length)))fail('RESTORE_ID_CONFLICT','已有恢复前缀与原始 Session 不同。',409)
         signal?.throwIfAborted();if(events.length<session.events.length)await handle.append(copy(session.events.slice(events.length)))
