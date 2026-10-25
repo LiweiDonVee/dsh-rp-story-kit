@@ -2,14 +2,14 @@
 
 DSH 原生角色与玩家资产库：导入 Character Card V2/V3 JSON 或常见 chara/ccv3 静态 PNG，保留原件，编辑版本、玩家身份与多个开场，交换数据内容包。世界设定卡也可以直接保存。
 
-当前为 **0.1.0 实现检查点**：包含共享 GM 启动接线、阅读稿与精确身份存档协调。入口按当前真实服务能力启用；完整原生整链验收与发布由协调方统一进行。检查证据的范围见 [验收说明](docs/acceptance.md)。
+**Story Kit 0.1.0** 提供版本化资产、共享 GM 故事启动、Markdown/TXT 阅读稿、内容包交换与精确身份故事存档。各入口按已安装插件的实际能力启用。验证方法与适用边界见 [验收说明](docs/acceptance.md)。
 
 ## 安装与使用
 
-目标宿主 **DSH 0.2.1-rc.3**，Node >=24。开发完成的本地包可以安装到 DSH profile：
+目标宿主 **DSH 0.2.1-rc.3**，Node >=24。从项目 [Releases](https://github.com/LiweiDonVee/dsh-rp-story-kit/releases) 获取安装包，完全退出 DSH 后安装到目标 profile：
 
 ```powershell
-dsh plugin --profile desktop add ./artifacts/dsh-rp-story-kit-0.1.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-story-kit-0.1.0.tgz
 ```
 
 重启 DSH 后，点击会话顶部或空白会话的“资产”，打开右侧原生面板；若安装 RP Studio，工作区内也有入口。资产库无需 GM、Database 或 LastStep 即可使用。侧栏尺寸、全屏与主题由宿主管理。
@@ -52,7 +52,7 @@ PNG 读取优先 ccv3，否则 chara；支持常见 tEXt 编码。优先元数�
 
 GM reservation 是执行门。只有宿主成功 create 并 flush、且任务已持久记录创建证据的 Session ID 才能续写。若在 create/flush 后、创建证据落盘前崩溃，重启无法自动确认归属：返回 RESTORE_ID_CONFLICT 并保留现场，需要明确的 owner 处理或空目标，不能仅凭相同内容接管。
 
-存档同时保留固定资产的 typed 默认库依赖、审阅后的启动配置及 GM 初始文风引用。即使当前故事明确选择空 sources 或 builtin，这些旧版本仍可作为被动库内容恢复，draft 保持 draft。当前文风和 overlay 继续由 LastStep 的实际绑定决定；GM.profile 只表示启动来源。依赖用途摘要以“当前绑定”和“资产/模板默认”展示已记录信息；单独出现在启动记录中的引用不因此成为资产默认，旧存档显示未记录。摘要不决定恢复权限或绑定。
+存档同时保留固定资产的 typed 默认库依赖、审阅后的启动配置及 GM 初始资料/文风引用。即使当前故事明确选择空 sources 或 builtin，这些旧版本仍可作为被动库内容恢复，draft 保持 draft。当前资料组合由 Database 决定，当前文风和 overlay 由 LastStep 决定；GM.sources/profile 只表示启动来源，没有 launch journal 也保留它们的精确库版本。依赖用途摘要以“当前绑定”和“资产/模板默认”展示已记录信息；单独出现在启动记录中的引用不因此成为资产默认，旧存档显示未记录。摘要不决定恢复权限或绑定。
 
 预检若列出 LOOP_NODE_VALIDATION，表示基础依赖通过，实际节点兼容性将在暂存、冷验证与无 prompt resume 后检查。节点、模型或插件缺失时保持 pending/未激活，保留原路由。Context 在来源环境缺席时记录 null；目标若装有 Context，只对恢复会话配置 disabled。详见 [存档与传输](docs/transfer.md)。
 

@@ -70,6 +70,8 @@ export function createNativeSessionAdapter(ctx){
         if(existing)handle=await get('sessionPersistence').open(session.header.id,'write',{signal})
         else{
           try{handle=await get('sessionPersistence').create(copy(session.header),{inheritedEventCount:session.inheritedEventCount,signal})}catch(error){if(['SessionAlreadyExistsError','SessionAlreadyOwnedError'].includes(error?.name)||['SESSION_ALREADY_EXISTS','SESSION_ALREADY_OWNED'].includes(error?.code))fail('RESTORE_ID_CONFLICT','目标 ID 在公开 create 前被其他操作占用。',409);throw error}
+          // Initialize a fresh handle before its first read, including a seeded log's original marker.
+          await handle.append(copy(session.events))
           await handle.flush()
           await onCreated?.()
         }

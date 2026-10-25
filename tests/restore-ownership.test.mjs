@@ -31,9 +31,9 @@ test('atomic public create losing a race reports RESTORE_ID_CONFLICT and leaves 
   await assert.rejects(coordinator(destination).restoreSavedStory({snapshot,restoreId:'create-race'}),{code:'RESTORE_ID_CONFLICT'});assert.equal(JSON.stringify(destination.sessions.get(foreign.header.id)),before);assert.equal(writer.calls.some(row=>row.kind==='append'),false)
 })
 
-test('only a durable successful public create records ownership before append and survives a lost write acknowledgement',async t=>{
+test('a durable public create records ownership after valid initialization and survives a lost write acknowledgement',async t=>{
   const{snapshot,destination,writer}=await setup(t),write=destination.host.writeSession;let interrupted=false
-  destination.host.writeSession=async input=>{await write({...input,onCreated:async()=>{assert.ok(writer.flushed.has(input.session.header.id));assert.equal(destination.sessions.get(input.session.header.id).events.length,0);await input.onCreated()}});if(!interrupted){interrupted=true;throw Object.assign(new Error('after write'),{code:'UNAVAILABLE'})}}
+  destination.host.writeSession=async input=>{await write({...input,onCreated:async()=>{assert.ok(writer.flushed.has(input.session.header.id));assert.deepEqual(destination.sessions.get(input.session.header.id).events,input.session.events);await input.onCreated()}});if(!interrupted){interrupted=true;throw Object.assign(new Error('after write'),{code:'UNAVAILABLE'})}}
   assert.equal((await coordinator(destination).restoreSavedStory({snapshot,restoreId:'created'})).status,'pending');const job=Object.values((await destination.store.rawState()).restoreJobs)[0];assert.deepEqual(job.createdIds,['parent']);assert.ok(writer.flushed.has('parent'))
   destination.restart();assert.equal((await coordinator(destination).restoreSavedStory({snapshot,restoreId:'created'})).status,'complete');assert.deepEqual(writer.calls.filter(row=>row.kind==='created').map(row=>row.id),['parent','child']);assert.equal(writer.calls.filter(row=>row.kind==='append'&&row.id==='parent').length,1)
 })
@@ -41,7 +41,14 @@ test('only a durable successful public create records ownership before append an
 test('a public create with lost local creation proof is refused rather than adopted from matching contents',async t=>{
   const{snapshot,destination,writer}=await setup(t),write=destination.host.writeSession
   destination.host.writeSession=input=>write({...input,onCreated:async()=>{throw Object.assign(new Error('creation checkpoint unavailable'),{code:'UNAVAILABLE'})}})
-  assert.equal((await coordinator(destination).restoreSavedStory({snapshot,restoreId:'unproven'})).status,'pending');assert.equal(destination.sessions.size,1);assert.equal(writer.calls.some(row=>row.kind==='append'),false)
+  assert.equal((await coordinator(destination).restoreSavedStory({snapshot,restoreId:'unproven'})).status,'pending');assert.equal(destination.sessions.size,1);assert.deepEqual(destination.sessions.get(snapshot.sessions[0].header.id).events,snapshot.sessions[0].events);assert.equal(writer.calls.filter(row=>row.kind==='append').length,1)
   const before=JSON.stringify([...destination.sessions]);destination.host.writeSession=write;destination.restart()
   await assert.rejects(coordinator(destination).restoreSavedStory({snapshot,restoreId:'unproven'}),{code:'RESTORE_ID_CONFLICT'});assert.equal(JSON.stringify([...destination.sessions]),before)
+})
+
+test('a seeded original written before a lost creation checkpoint remains unowned on restart',async t=>{
+  const{snapshot,destination,writer}=await setup(t),write=destination.host.writeSession,child=snapshot.sessions[1]
+  destination.host.writeSession=input=>write({...input,onCreated:async()=>{if(input.session.header.isSeeded)throw Object.assign(new Error('seeded creation checkpoint unavailable'),{code:'UNAVAILABLE'});await input.onCreated()}})
+  assert.equal((await coordinator(destination).restoreSavedStory({snapshot,restoreId:'seeded-unproven'})).status,'pending');assert.deepEqual(Object.values((await destination.store.rawState()).restoreJobs)[0].createdIds,['parent']);assert.deepEqual(destination.sessions.get(child.header.id).events,child.events)
+  const before=JSON.stringify([...destination.sessions]);destination.host.writeSession=write;destination.restart();await assert.rejects(coordinator(destination).restoreSavedStory({snapshot,restoreId:'seeded-unproven'}),{code:'RESTORE_ID_CONFLICT'});assert.equal(JSON.stringify([...destination.sessions]),before);assert.equal(writer.calls.filter(row=>row.kind==='append'&&row.id===child.header.id).length,1)
 })

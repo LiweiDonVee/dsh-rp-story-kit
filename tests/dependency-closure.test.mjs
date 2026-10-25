@@ -73,3 +73,21 @@ test('closure follows typed pinned/launch refs only and never invents V1 from do
   const projection={payload:{characters:[{databaseRefs:[{key:'typed',databaseId:'World',version:2}],profileRef:{profileId:'Style',version:2}}],launches:[{request:{sources:[{key:'template',databaseId:'TemplateBook',version:5}],profile:{profileId:'TemplateStyle',version:5}}}],sources:[{provenance:{document:{databaseId:'World'},databaseRefs:[{databaseId:'World',version:1}],profileRef:{profileId:'Style',version:1},url:'https://example.invalid/not-a-dependency'}}]}}
   assert.deepEqual(collectAssetDependencies(projection),{additionalDatabaseRefs:[{databaseId:'TemplateBook',version:5},{databaseId:'World',version:2}],additionalProfileRefs:[{profileId:'Style',version:2},{profileId:'TemplateStyle',version:5}]})
 })
+
+test('initial GM source libraries survive without a StoryKit launch journal while current composition stays authoritative',async t=>{
+  const source=await savedFixture(t,{source:true})
+  for(const id of ['InitialSource','CurrentSource'])source.libraries.database.set(key(id,1),{id,version:1,name:id,entries:[]})
+  for(const id of source.sessions.keys())source.bindings.get(id).sources=[{key:'initial-slot',databaseId:'InitialSource',version:1}]
+  source.runtimeBindings.database.set('child',[{key:'current-slot',databaseId:'CurrentSource',version:1}])
+  const snapshot=(await owner(source).exportSavedStory({sessionId:'child'})).snapshot
+  assert.deepEqual(snapshot.pluginState.storyKit.payload.launches,[]);assert.deepEqual(source.exportRequests.find(row=>row.owner==='database').additionalDatabaseRefs,[{databaseId:'InitialSource',version:1}]);assert.deepEqual(snapshot.dependencySummary.databases,[{databaseId:'CurrentSource',version:1,uses:['current-binding']}])
+  const destination=await savedFixture(t);assert.equal((await owner(destination).restoreSavedStory({snapshot,restoreId:'initial-sources-no-journal'})).status,'complete');assert.equal(destination.libraries.database.has(key('InitialSource',1)),true);assert.deepEqual(destination.runtimeBindings.database.get('child'),[{key:'current-slot',databaseId:'CurrentSource',version:1}]);assert.deepEqual(destination.bindings.get('child').sources,[{key:'initial-slot',databaseId:'InitialSource',version:1}])
+  const dropped=structuredClone(snapshot);dropped.pluginState.database.payload.libraries=dropped.pluginState.database.payload.libraries.filter(item=>item.id!=='InitialSource');const incomplete=await savedFixture(t);assert.equal((await owner(incomplete).restoreSavedStory({snapshot:dropped,restoreId:'missing-initial-source'})).status,'pending');assert.equal(incomplete.log.includes('gm.activate'),false)
+  source.runtimeBindings.database.set('child',[{key:'initial-slot',databaseId:'InitialSource',version:1},{key:'added-slot',databaseId:'CurrentSource',version:1}]);const appended=(await owner(source).exportSavedStory({sessionId:'child'})).snapshot,addedDestination=await savedFixture(t)
+  assert.equal((await owner(addedDestination).restoreSavedStory({snapshot:appended,restoreId:'initial-plus-added'})).status,'complete');assert.deepEqual(addedDestination.runtimeBindings.database.get('child'),source.runtimeBindings.database.get('child'));assert.deepEqual(addedDestination.bindings.get('child').sources,[{key:'initial-slot',databaseId:'InitialSource',version:1}]);assert.equal(appended.dependencySummary.databases.every(item=>item.uses.length===1&&item.uses[0]==='current-binding'),true)
+})
+
+test('missing an initial-only exact GM source fails export instead of guessing a newer library version',async t=>{
+  const source=await savedFixture(t,{source:true});source.libraries.database.set(key('InitialSource',2),{id:'InitialSource',version:2,name:'newer',entries:[]});source.bindings.get('child').sources=[{key:'initial',databaseId:'InitialSource',version:1}]
+  await assert.rejects(owner(source).exportSavedStory({sessionId:'child'}),error=>error.code==='EXPORT_REQUIREMENT_MISSING'&&error.diagnostics?.some(item=>item.ref?.databaseId==='InitialSource'&&item.ref.version===1))
+})
