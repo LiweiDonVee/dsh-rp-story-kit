@@ -8,7 +8,7 @@ export function apply(ctx){
   disposers.push(ctx.llm.registerAdapter(['story-kit-full-local'],adapter))
   disposers.push(ctx.on('tools/execute',async(exec,next)=>{const result=await next();executions.push({sessionId:exec.agent.session.id,name:exec.name,isError:result.isError,value:result.value});return result}))
   const get=name=>ctx.get(name),invoke=(method,request,signal)=>ctx.typertGateway.invoke({namespace:'session',method,args:{request},peer:ctx.connection.browserPeer,signal})
-  async function observed(sessionId){const view=await ctx.sessionQuery.observeSession(sessionId);try{return{header:view.header,events:view.events,inheritedEventCount:view.inheritedEventCount,live:!!ctx.agents.get(sessionId)}}finally{view[Symbol.dispose]()}}
+  async function observed(sessionId){const view=await ctx.sessionQuery.observeSession(sessionId);try{return{header:view.header,events:view.events,inheritedEventCount:view.inheritedEventCount,live:!!ctx.agents.get(sessionId),inbox:structuredClone(view.projections?.values?.inbox??null)}}finally{view[Symbol.dispose]()}}
   async function snapshot(sessionId){
     const result=await observed(sessionId)
     for(const[key,read]of [['gm',()=>get('rpGM').storyState({sessionId})],['database',()=>get('rpDatabase').effectiveV2({sessionId})],['lastStep',()=>get('rpLastStep').state(sessionId)],['narratives',()=>get('rpLastStep').narratives({sessionId})],['context',()=>get('rpContext')?.state({sessionId})],['loop',()=>ctx.agents.get(sessionId)?get('loopStudio')?.inspect(sessionId):null]]){try{result[key]=await read()}catch(error){result[key]={error:{code:error.code,message:error.message}}}}
