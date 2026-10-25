@@ -27,6 +27,8 @@ createCharacter({character, expectedRevision, signal})
 createPersona({persona, expectedRevision, signal})
 saveCharacter({character, expectedRevision, signal})
 savePersona({persona, expectedRevision, signal})
+launch({launchId, character, persona, openingId, sources, profile, initialScene, initialFacts, signal})
+resumeLaunch({launchId, signal})
 ```
 
 Create inputs omit id/version/sourceId. Store responses identify assetId/version/revision. Saves include the current explicit version. Never select identity by display name. Obtain current revisions from the actual service; do not invent or automatically rebase a stale owner's edits.
@@ -34,3 +36,7 @@ Create inputs omit id/version/sourceId. Store responses identify assetId/version
 EmbeddedWorldbook is {id,sourceId,sourcePath,name,rawText}. rawText is the entire original JSON card, including exact decoded card metadata for PNG. importWorldbook takes {assetId,version,descriptorId,expectedRevision,expectedDatabaseRevision,signal}; it delegates Database's parser and saves a new asset version linked under source slot card. It does not mutate the original or import a book during raw parsing.
 
 Content packs use format dsh-rp-story-pack/schemaVersion 1, with assets/databases/profiles/storyTemplates/resources/requirements. They contain no credentials, local provider settings, executable modules or running session logs. Foreign IDs are pack-scoped and remapped; imported profiles stay review drafts. Do not confuse these packs with the separate dsh-rp-saved-story restore format.
+
+Launch/template initialScene is exactly {schemaVersion:1,title,location,time?,presentActorIds:string[]}; initialFacts is exactly {schemaVersion:1,items:[{id,text}]}. Examples never populate these objects. Explicit profile object wins; explicit null selects builtin; omission inherits Character.profileRef when present. Draft/missing links are explicit errors. A pending launch resumes its persisted reviewed request, rather than current editor values.
+
+DocumentContent travels in PackDatabase.documents, with contextual documentMappings from Database. SourcePayload/provenance stays original audit data. Reading export uses current adopted narratives. SavedStory carries exact Session IDs/headers/events/inheritedEventCount and owner state, with one durable restoreId; it is never an instruction to copy Session files or remap event IDs. Missing provider/model capabilities and deferred Loop graph checks remain explicit in owner preview.

@@ -4,6 +4,7 @@ import {StoryKitError,copy,fail,identifier,normalizeBindings,normalizeCharacter,
 import {appendAsset,storageKey} from './store.mjs'
 import {importCharacter} from './import.mjs'
 import {validateStorySeed} from './seeds.mjs'
+import {validateDatabaseDocuments} from './documents.mjs'
 
 export const packKey=(id,version)=>JSON.stringify([id,version])
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex')
@@ -24,7 +25,7 @@ function dataOnly(value){
     dataOnly(item)
   }
 }
-function sourcePayload(value){
+function sourcePayload(value,{privacy=true}={}){
   keys(value,['format','rawText','dataBase64','sha256','provenance'])
   identifier(value.format,'来源格式')
   if(value.rawText!==undefined&&typeof value.rawText!=='string'||value.provenance!==undefined&&!object(value.provenance)||value.rawText===undefined&&value.dataBase64===undefined)fail('INVALID_PACK','原件来源格式无效。')
@@ -42,10 +43,10 @@ function sourcePayload(value){
   }
   if(value.rawText!==undefined&&value.rawText!==rawText)fail('INVALID_PACK','原件文本与原始字节不一致。')
   if(object(parsed)&&value.provenance!==undefined&&!isDeepStrictEqual(value.provenance,parsed))fail('INVALID_PACK','原件 provenance 与原始字节解析结果不一致。')
-  if(parsed!==undefined)dataOnly(parsed)
-  dataOnly(value)
+  if(privacy){if(parsed!==undefined)dataOnly(parsed);dataOnly(value)}
   return{...copy(value),...rawText!==undefined?{rawText}:{},provenance:copy(object(parsed)?parsed:value.provenance??{})}
 }
+export {sourcePayload as validateSourcePayload}
 function unique(items,keyFn,label){const seen=new Set();for(const item of items){const key=keyFn(item);if(seen.has(key))fail('INVALID_PACK',`${label} 身份重复。`);seen.add(key)}return seen}
 function refKey(ref,idField){if(!object(ref))fail('INVALID_PACK','内容引用必须是对象。');return packKey(identifier(ref[idField]),version(ref.version))}
 
@@ -58,9 +59,10 @@ export function validatePack(input){
   for(const item of pack.assets){keys(item,['kind','asset','source']);if(!['character','persona'].includes(item.kind))fail('INVALID_PACK','内容包资产类型无效。');keys(item.asset,item.kind==='character'?characterFields:personaFields);identifier(item.asset.id);version(item.asset.version);item.asset=item.kind==='character'?normalizeCharacter(item.asset):normalizePersona(item.asset);if(item.source)item.source=sourcePayload(item.source);if(item.asset.sourceId&&!item.source)fail('INVALID_PACK','有来源引用的资产必须携带原件来源。')}
   const assetIds=unique(pack.assets,item=>packKey(item.asset.id,item.asset.version),'资产')
   for(const type of ['databases','profiles'])for(const item of pack[type]){
-    const field=type==='databases'?'database':'profile';keys(item,['id','version',field,'source']);identifier(item.id);version(item.version)
+    const field=type==='databases'?'database':'profile';keys(item,['id','version',field,'source',...type==='databases'?['documents']:[]]);identifier(item.id);version(item.version)
     if(!object(item[field])||item[field].id!==item.id||item[field].version!==item.version||!Array.isArray(item[field].entries))fail('INVALID_PACK',`${field} 版本与封装身份不一致。`)
     if(item.source)item.source=sourcePayload(item.source)
+    if(type==='databases')validateDatabaseDocuments({database:item.database,documents:item.documents})
   }
   const dbIds=unique(pack.databases,item=>packKey(item.id,item.version),'数据库'),profileIds=unique(pack.profiles,item=>packKey(item.id,item.version),'预设')
   const resourceIds=unique(pack.resources,item=>identifier(item.id),'资源')
@@ -100,7 +102,7 @@ export function createPackService({store,getDatabase,getProfiles}){
         if(kind==='character'){for(const binding of asset.databaseRefs)databases.set(packKey(binding.databaseId,binding.version),binding);if(asset.profileRef)profiles.set(packKey(asset.profileRef.profileId,asset.profileRef.version),asset.profileRef)}
       }
       for(const template of templates){for(const binding of template.sources)databases.set(packKey(binding.databaseId,binding.version),binding);if(template.profile)profiles.set(packKey(template.profile.profileId,template.profile.version),template.profile)}
-      for(const binding of databases.values()){const provider=getDatabase();if(typeof provider?.exportContent!=='function')fail('DEPENDENCY_UNAVAILABLE','导出引用资料需要 RP Database 内容服务。',409);const result=await provider.exportContent({databaseId:binding.databaseId,version:binding.version,signal});pack.databases.push({id:binding.databaseId,version:binding.version,database:result.database,...result.source?{source:payload(result.source)}:{}})}
+      for(const binding of databases.values()){const provider=getDatabase();if(typeof provider?.exportContent!=='function')fail('DEPENDENCY_UNAVAILABLE','导出引用资料需要 RP Database 内容服务。',409);const result=await provider.exportContent({databaseId:binding.databaseId,version:binding.version,signal});pack.databases.push({id:binding.databaseId,version:binding.version,database:result.database,...result.source?{source:payload(result.source)}:{},...result.documents!==undefined?{documents:copy(result.documents)}:{}})}
       for(const ref of profiles.values()){const provider=getProfiles();if(typeof provider?.exportContent!=='function')fail('DEPENDENCY_UNAVAILABLE','导出引用预设需要 RP LastStep 内容服务。',409);const result=await provider.exportContent({...ref,signal});pack.profiles.push({id:ref.profileId,version:ref.version,profile:result.profile,...result.source?{source:payload(result.source)}:{}})}
       for(const resourceId of resources)pack.resources.push(await store.resource({resourceId}))
       pack.requirements=requirements(pack)
@@ -126,13 +128,23 @@ export function createPackService({store,getDatabase,getProfiles}){
               const requestKey=`${type}:${key}`,requestId=operation.requests[requestKey]??`${store.storageKey}:${operation.id}:${requestKey}`
               operation.requests[requestKey]=requestId;await checkpoint()
               const value=copy(item[field]);if(type==='profiles')value.status='draft'
-              const result=await provider.importContent({[field]:value,...item.source?{source:item.source}:{},requestId,expectedRevision:revision,signal})
-              mappings[type][key]={[idField]:identifier(result[idField]),version:version(result.version)};revision=result.revision;await checkpoint()
+              const result=await provider.importContent({[field]:value,...item.source?{source:item.source}:{},...type==='databases'&&item.documents!==undefined?{documents:copy(item.documents)}:{},requestId,expectedRevision:revision,signal})
+              const mapping={[idField]:identifier(result[idField]),version:version(result.version)}
+              if(type==='databases'){
+                if(result.sourceId!==undefined)mapping.sourceId=identifier(result.sourceId)
+                if(item.documents?.length||result.documentMappings!==undefined){
+                  const documents=result.documentMappings
+                  if(!object(documents)||Object.keys(documents).length!==(item.documents??[]).length)fail('INVALID_PACK','文档导入映射不完整。')
+                  for(const content of item.documents??[]){const target=documents[packKey(content.document.id,content.document.version)];if(!object(target))fail('INVALID_PACK','缺少文档导入映射。');identifier(target.documentId);version(target.version)}
+                  mapping.documentMappings=Object.fromEntries((item.documents??[]).map(content=>{const key=packKey(content.document.id,content.document.version),target=documents[key];return[key,{documentId:target.documentId,version:target.version}]}))
+                }
+              }
+              mappings[type][key]=mapping;revision=result.revision;await checkpoint()
             }
           }
-        }catch(error){if(error?.name==='AbortError')throw error;throw new StoryKitError('PACK_IMPORT_INCOMPLETE','内容服务导入未完成；已保留映射，再试会继续未完成项。',error?.status===409?409:503,[{code:error?.code??'DEPENDENCY_UNAVAILABLE',mappings:copy(mappings),requestIds:copy(operation.requests)}])}
+        }catch(error){if(error?.name==='AbortError')throw error;throw new StoryKitError(error?.code==='REQUEST_ID_CONFLICT'?'REQUEST_ID_CONFLICT':'PACK_IMPORT_INCOMPLETE','内容服务导入未完成；已保留映射，再试会继续未完成项。',error?.status===409?409:503,[{code:error?.code??'DEPENDENCY_UNAVAILABLE',mappings:copy(mappings),requestIds:copy(operation.requests)}])}
         signal?.throwIfAborted()
-        const remapBindings=bindings=>bindings.map(ref=>({key:ref.key,...mappings.databases[packKey(ref.databaseId,ref.version)]}))
+        const remapBindings=bindings=>bindings.map(ref=>{const target=mappings.databases[packKey(ref.databaseId,ref.version)];return{key:ref.key,databaseId:target.databaseId,version:target.version}})
         const remapProfile=ref=>mappings.profiles[packKey(ref.profileId,ref.version)]
         for(const resource of pack.resources){const id=randomUUID();put(mappings.resources,resource.id,id);state.resources[storageKey(id)]={...resource,id}}
         for(const item of pack.assets){

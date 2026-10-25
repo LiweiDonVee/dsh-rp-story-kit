@@ -84,3 +84,9 @@ test('optional SourcePayload provenance is reconstructed as inert parsed data wi
   const{source}=await service.source({sourceId:asset.sourceId})
   assert.equal(source.rawText,raw);assert.equal(source.sha256,sha256);assert.deepEqual(source.provenance,{name:'公开合成身份'})
 })
+
+test('a provider requestId semantic conflict keeps the frozen REQUEST_ID_CONFLICT code',async t=>{
+  const{service}=await setup(t,{rpDatabase:{contentRevision:async()=>({revision:0}),importContent:async()=>{throw Object.assign(new Error('PRIVATE BODY'),{code:'REQUEST_ID_CONFLICT',status:409})}}})
+  const pack={format:'dsh-rp-story-pack',schemaVersion:1,assets:[],databases:[{id:'db',version:1,database:{id:'db',version:1,name:'data',entries:[]}}],profiles:[],storyTemplates:[],resources:[],requirements:[]}
+  await assert.rejects(service.importPack({pack,expectedRevision:0}),error=>error.code==='REQUEST_ID_CONFLICT'&&!error.message.includes('PRIVATE'))
+})

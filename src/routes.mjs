@@ -1,6 +1,6 @@
 import {StoryKitError,object} from './assets.mjs'
 
-const fields={state:[],asset:['kind','assetId','version'],source:['sourceId'],importAsset:['format','rawText','dataBase64','name','expectedRevision'],createCharacter:['character','expectedRevision'],saveCharacter:['character','expectedRevision'],createPersona:['persona','expectedRevision'],savePersona:['persona','expectedRevision'],importWorldbook:['assetId','version','descriptorId','expectedRevision','expectedDatabaseRevision'],launch:['launchId','character','persona','openingId','sources','profile','initialScene','initialFacts'],exportPack:['characters','personas','templates'],previewPack:['pack'],importPack:['pack','expectedRevision'],exportReading:['sessionId','format']}
+const fields={state:[],asset:['kind','assetId','version'],source:['sourceId'],importAsset:['format','rawText','dataBase64','name','expectedRevision'],createCharacter:['character','expectedRevision'],saveCharacter:['character','expectedRevision'],createPersona:['persona','expectedRevision'],savePersona:['persona','expectedRevision'],importWorldbook:['assetId','version','descriptorId','expectedRevision','expectedDatabaseRevision'],launch:['launchId','character','persona','openingId','sources','profile','initialScene','initialFacts'],resumeLaunch:['launchId'],exportPack:['characters','personas','templates'],previewPack:['pack'],importPack:['pack','expectedRevision'],exportReading:['sessionId','format'],exportSavedStory:['sessionId'],previewSavedStory:['snapshot'],restoreSavedStory:['snapshot','restoreId']}
 const writes=new Set(['importAsset','createCharacter','saveCharacter','createPersona','savePersona','importWorldbook','importPack'])
 const id=value=>typeof value==='string'&&Boolean(value.trim())&&value.length<=256
 const version=value=>Number.isSafeInteger(value)&&value>0
@@ -17,7 +17,12 @@ function valid(input){
   if(input.action==='exportPack'&&(!Array.isArray(input.characters)||!input.characters.every(ref)||!Array.isArray(input.personas)||!input.personas.every(ref)||!Array.isArray(input.templates)))return false
   if(['previewPack','importPack'].includes(input.action)&&!object(input.pack))return false
   if(input.action==='launch'&&(!id(input.launchId)||!ref(input.character)||!ref(input.persona)||!id(input.openingId)||!Array.isArray(input.sources)||!object(input.initialScene)||input.initialFacts===undefined))return false
+  if(input.action==='launch'&&input.profile!==undefined&&input.profile!==null&&(!object(input.profile)||!id(input.profile.profileId)||!version(input.profile.version)||Object.keys(input.profile).some(key=>!['profileId','version'].includes(key))))return false
+  if(input.action==='resumeLaunch'&&!id(input.launchId))return false
   if(input.action==='exportReading'&&(!id(input.sessionId)||!['markdown','text'].includes(input.format)))return false
+  if(input.action==='exportSavedStory'&&!id(input.sessionId))return false
+  if(['previewSavedStory','restoreSavedStory'].includes(input.action)&&!object(input.snapshot))return false
+  if(input.action==='restoreSavedStory'&&!id(input.restoreId))return false
   return true
 }
 const failure=(status,code,message,diagnostics=[])=>Response.json({error:{code,message,diagnostics}},{status,headers:{'cache-control':'no-store'}})

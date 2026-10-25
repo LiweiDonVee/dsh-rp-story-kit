@@ -30,3 +30,11 @@ test('SSE emits only metadata and unsubscribes on owner cancellation',async()=>{
   const changed=decoder.decode((await reader.read()).value);assert.match(changed,/"revision":3/u);assert.doesNotMatch(changed,/SOURCE PRIVATE/u)
   controller.abort();await reader.cancel();assert.equal(closed,1);owner.close()
 })
+
+test('new owner routes accept only frozen launch-resume and saved-story DTOs',async()=>{
+  const seen=[],owner=routes({resumeLaunch:async input=>{seen.push(['resume',input]);return{sessionId:'story',status:'starting',binding:{}}},previewSavedStory:async input=>{seen.push(['preview',input]);return{supported:false,conflicts:[],requirements:['missing'],identityMode:'preserve',deferredChecks:[]}},restoreSavedStory:async input=>{seen.push(['restore',input]);return{status:'pending',sessionId:'story',diagnostics:[]}}})
+  for(const input of [{action:'resumeLaunch',launchId:'launch'},{action:'previewSavedStory',snapshot:{}},{action:'restoreSavedStory',snapshot:{},restoreId:'restore'}])assert.equal((await owner.request(request(input))).status,200)
+  assert.equal(seen.length,3);assert.ok(seen.every(([,input])=>input.signal instanceof AbortSignal))
+  for(const input of [{action:'resumeLaunch',launchId:'launch',initialFacts:[]},{action:'restoreSavedStory',snapshot:{},restoreId:'restore',sessionIds:['foreign']},{action:'previewSavedStory',snapshot:{},service:'arbitrary'},{action:'restoreSavedStory',snapshot:{},restoreId:''}])assert.equal((await owner.request(request(input))).status,400)
+  assert.equal(seen.length,3)
+})

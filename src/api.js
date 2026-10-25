@@ -7,7 +7,8 @@ export function createStoryKitApi(send=(...args)=>globalThis.fetch(...args)){
     return data
   }
   const api={}
-  for(const action of ['state','asset','source','importAsset','createCharacter','saveCharacter','createPersona','savePersona','importWorldbook','launch','exportPack','previewPack','importPack','exportReading'])api[action]=(input={})=>{const{signal,...args}=input;return request(action,args,signal)}
+  for(const action of ['state','asset','source','importAsset','createCharacter','saveCharacter','createPersona','savePersona','importWorldbook','launch','resumeLaunch','exportPack','previewPack','importPack','exportReading','exportSavedStory','previewSavedStory','restoreSavedStory'])api[action]=(input={})=>{const{signal,...args}=input;return request(action,args,signal)}
+  api.databaseCatalog=signal=>request('state',{},signal,'api/rp-database/request')
   api.databaseRevision=signal=>request('state',{},signal,'api/rp-database/request').then(({revision})=>({revision}))
   api.subscribe=(onEvent,onError)=>{const events=new EventSource(new URL('api/rp-story-kit/events',document.baseURI));for(const type of ['connected','changed'])events.addEventListener(type,event=>{try{onEvent(JSON.parse(event.data))}catch{/* Ignore malformed metadata, not source content. */}});events.onerror=onError;return()=>events.close()}
   return api

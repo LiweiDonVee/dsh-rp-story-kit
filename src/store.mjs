@@ -41,6 +41,7 @@ export function createStoryKitStore({directory}) {
   function serial(work){const result=(queues.get(queueKey)??Promise.resolve()).then(work),settled=result.then(()=>{},()=>{});queues.set(queueKey,settled);void settled.then(()=>{if(queues.get(queueKey)===settled)queues.delete(queueKey)});return result}
   async function writeState(state){await mkdir(root,{recursive:true});const temporary=join(root,`.story-kit-${randomUUID()}.tmp`);try{await writeFile(temporary,JSON.stringify(state),{encoding:'utf8',flag:'wx'});await rename(temporary,file)}finally{await rm(temporary,{force:true})}}
   const read=work=>serial(async()=>copy(await work(await readState())))
+  const updateInternal=(work,{signal}={})=>serial(async()=>{signal?.throwIfAborted();const state=await readState(),{changed=true,result={}}=await work(state);signal?.throwIfAborted();if(changed){state.revision++;await writeState(state)}return copy({...result,revision:state.revision})})
   const transact=(expectedRevision,work)=>serial(async()=>{revision(expectedRevision);const state=await readState();if(state.revision!==expectedRevision)fail('REVISION_CONFLICT','资产库已变化，请重新载入。',409);const result=await work(state,()=>writeState(state));state.revision++;await writeState(state);return copy({revision:state.revision,...result})})
   function create(kind,input,expectedRevision){const captured=copy(input);return transact(expectedRevision,state=>{if(!object(captured)||['id','version','sourceId'].some(key=>Object.hasOwn(captured,key)))fail('INVALID_ASSET','新建资产不可指定 ID、版本或来源。');return appendAsset(state,kind,{...captured,id:randomUUID(),version:1},{create:true})})}
   function save(kind,input,expectedRevision){const captured=copy(input);return transact(expectedRevision,state=>{if(!object(captured)||!captured.id||!captured.version)fail('INVALID_ASSET','保存需要资产 ID 与明确 base version。');return appendAsset(state,kind,captured)})}
@@ -66,7 +67,7 @@ export function createStoryKitStore({directory}) {
       return{...appendAsset(state,'character',result.character,{create:true}),sourceId:result.source.id,diagnostics:result.diagnostics,embeddedWorldbooks:result.embeddedWorldbooks}
     })},
     // Internal queue seam for delegated imports and content-pack assembly, never an owner action.
-    transact,storageKey:hash(queueKey),
+    transact,rawState:()=>read(state=>state),updateInternal,storageKey:hash(queueKey),
   }
 }
 

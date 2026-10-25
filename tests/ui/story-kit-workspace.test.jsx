@@ -22,6 +22,7 @@ describe('native Story Kit asset editor',()=>{
     fireEvent.change(screen.getByLabelText('选择开场'),{target:{value:'alternate-1'}})
     expect(screen.getByLabelText('选择开场')).toHaveValue('alternate-1')
     expect(screen.getByRole('button',{name:'开始故事'})).toBeDisabled()
+    expect(screen.getByLabelText('已审阅初始场景与事实')).not.toBeChecked()
     fireEvent.click(screen.getByRole('button',{name:'查看原件'}))
     expect(screen.getByLabelText('原始来源')).toHaveValue(rawText)
     expect(screen.getByLabelText('原始来源')).toHaveAttribute('readonly')
@@ -90,5 +91,10 @@ describe('native Story Kit asset editor',()=>{
     await act(async()=>{rejectOld(new DOMException('Old aborted operation','AbortError'));await Promise.resolve()})
     expect(screen.getByRole('button',{name:'保存新版本'})).toBeDisabled();expect(screen.queryByRole('alert')).toBeNull()
     await act(async()=>{await finishNew()});await screen.findByText('已保存版本 1');expect(screen.getByRole('button',{name:'保存新版本'})).toBeEnabled()
+  })
+
+  it('opens the native transfer owner view while unavailable real mechanisms stay disabled',async()=>{
+    const{client}=await setup();show(client);fireEvent.click(screen.getByRole('button',{name:'故事迁移'}))
+    expect(screen.getByRole('button',{name:'导出完整故事存档'})).toBeDisabled();expect(screen.getByRole('button',{name:'按原 ID 恢复 / 继续'})).toBeDisabled();expect(screen.getByLabelText('恢复任务 ID').value).toBeTypeOf('string')
   })
 })

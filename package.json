@@ -6,7 +6,7 @@
   "type": "module",
   "main": "dist/host.js",
   "exports": {".": "./dist/host.js", "./client": "./dist/client.js", "./package.json": "./package.json"},
-  "files": ["dist", "cordis.patch.yml", "README.md", "LICENSE"],
+  "files": ["dist", "cordis.patch.yml", "README.md", "LICENSE", "docs/architecture.md", "docs/transfer.md", "docs/acceptance.md", "docs/skill-evaluation.md", "examples"],
   "engines": {"node": ">=24", "dsh": ">=0.2.1-rc.3 <0.3.0-0"},
   "dsh": {"bundle": {"patch": "./cordis.patch.yml"}, "client": {"inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-sidebar-right", "@deepseek-ai/dsh-client-ui-workspace"], "platform": "web"}},
   "scripts": {

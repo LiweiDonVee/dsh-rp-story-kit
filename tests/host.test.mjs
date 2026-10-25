@@ -51,3 +51,15 @@ test('bundled adaptation skill registers standard body/resource base and release
   assert.equal(registered.length,1);assert.equal(registered[0].name,'adapting-roleplay-story-assets');assert.equal(registered[0].source,'bundled');assert.equal(registered[0].resourceBase.kind,'directory');assert.match(registered[0].content,/^#/u)
   service.close();assert.equal(registered.length,0)
 })
+
+test('production host projects actual launch/reading dependencies and persists resumable owner metadata',async t=>{
+  const directory=await mkdtemp(join(tmpdir(),'story-kit-host-runtime-'));t.after(()=>rm(directory,{recursive:true,force:true}));let binding
+  const services={rpGM:{apiVersion:1,binding:async()=>binding??null,startStory:async input=>{binding={schemaVersion:1,id:'b',sessionId:'native-story',launchId:input.launchId,title:input.title,status:'starting',character:input.character,persona:input.persona,opening:input.opening,examples:input.examples,sources:input.sources,profile:{profileId:'builtin',version:1},factEntryRefs:[],createdAt:'2026-10-25T00:00:00.000Z'};return{sessionId:binding.sessionId,binding,status:'starting'}}},rpDatabase:{apiVersion:2,bindSources(){},initializeStoryState(){},database(){}},rpLastStep:{profile(){},bindSession(){},ensureBuiltinProfile(){},narratives:async()=>({records:[{id:'["p",2]',ref:{sessionId:'native-story',presentationId:'p',assistantMessageId:'a',callSeq:1,baseResultSeq:2,resultSeq:2},turn:1,action:'',text:'已采用的正文。'}]})}}
+  const service=await api.createStoryKitHost({get:name=>services[name]},{directory});t.after(()=>service.close())
+  const character=await service.createCharacter({character:{name:'公开故事',openings:[{id:'first',name:'开场',text:'雾'}]},expectedRevision:0}),persona=await service.createPersona({persona:{name:'旅人',description:''},expectedRevision:1})
+  const state=await service.state({});assert.equal(state.capabilities.launch,true);assert.equal(state.capabilities.readingExport,true);assert.equal(state.capabilities.savedStoryRestore,false)
+  const result=await service.launch({launchId:'real-seam-fixture',character:{assetId:character.assetId,version:1},persona:{assetId:persona.assetId,version:1},openingId:'first',sources:[],profile:null,initialScene:{schemaVersion:1,title:'港口',location:'码头',presentActorIds:[]},initialFacts:{schemaVersion:1,items:[]}})
+  assert.equal(result.status,'starting');assert.equal((await service.state({})).pendingLaunches[0].launchId,'real-seam-fixture');assert.equal((await service.exportReading({sessionId:'native-story',format:'text'})).text,'已采用的正文。\n')
+  services.rpGM.binding=async()=>{throw Object.assign(new Error('private unavailable detail'),{code:'UNAVAILABLE',status:503})}
+  const degraded=await service.state({});assert.equal(degraded.characters.length,1);assert.equal(degraded.pendingLaunches[0].errorCode,'UNAVAILABLE')
+})
