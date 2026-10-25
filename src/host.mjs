@@ -21,7 +21,7 @@ export async function createStoryKitHost(ctx,options={}){
   let stopped=false
   const operations=new Set(),pending=new Set(),subscribers=new Set()
   const skillDisposers=new Set()
-  const get=name=>ctx.get?.(name)??ctx[name],native=createNativeSessionAdapter(ctx),launches=createLaunchService({store,getGM:()=>get('rpGM'),getDatabase:()=>get('rpDatabase'),getLastStep:()=>get('rpLastStep')}),reading=createReadingExporter({getLastStep:()=>get('rpLastStep'),getGM:()=>get('rpGM')})
+  const get=name=>typeof ctx.get==='function'?ctx.get(name):ctx[name],native=createNativeSessionAdapter(ctx),launches=createLaunchService({store,getGM:()=>get('rpGM'),getDatabase:()=>get('rpDatabase'),getLastStep:()=>get('rpLastStep')}),reading=createReadingExporter({getLastStep:()=>get('rpLastStep'),getGM:()=>get('rpGM')})
   const transfer=createStoryKitTransfer({store,getGM:()=>get('rpGM'),readSession:native.readSession,readerAvailable:native.readable})
   const ownerMap={database:'rpDatabase',context:'rpContext',lastStep:'rpLastStep',gm:'rpGM',loop:'loopStudio'},saved=createSavedStoryCoordinator({store,host:native,getOwner:name=>name==='storyKit'?transfer:get(ownerMap[name])})
   const packs=createPackService({store,getDatabase:()=>get('rpDatabase'),getProfiles:()=>get('rpLastStep')})

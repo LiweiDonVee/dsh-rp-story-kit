@@ -6,6 +6,11 @@ function fixture(){const stored=new Map(),live=new Map(),log=[],services={connec
 function native(ctx){assert.equal(typeof api.createNativeSessionAdapter,'function');return api.createNativeSessionAdapter(ctx)}
 const session={header:{version:4,id:'child',createdAt:1792927680000,cwd:null,parentSession:'parent',isSeeded:true,agentPreset:'rp-gm'},events:[{seq:0,time:1792927680001,type:'permission/preset',data:{preset:'workspace-write'}},{seq:1,time:1792927680002,type:'sandbox/mode',data:{mode:'workspace-write'}}],inheritedEventCount:1}
 
+test('missing optional native services stay unavailable without reading undeclared Context properties',()=>{
+  const ctx=new Proxy({get:()=>undefined},{get(target,key,receiver){if(Reflect.has(target,key))return Reflect.get(target,key,receiver);throw Error(`cannot get property ${String(key)} without inject`)}}),adapter=native(ctx)
+  assert.equal(adapter.readable(),false);assert.equal(adapter.restorable(),false)
+})
+
 test('native adapter uses exact public persistence metadata, flush/close, cold validation and no-prompt resume',async()=>{
   const data=fixture(),host=native(data.ctx)
   await host.writeSession({session,owned:false});await host.coldValidate({session});await host.resumeSession({session})

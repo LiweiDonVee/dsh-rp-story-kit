@@ -5,7 +5,7 @@ import {headersEqual} from './identity.mjs'
 function resumeSuffix(events,count){if(events.length===count)return true;if(events.length!==count+1)return false;const event=events[count];return event.seq===count&&event.type==='session/end-seed'&&Number.isFinite(event.time)&&isDeepStrictEqual(event.data,{})&&Object.keys(event).every(key=>['seq','type','time','data'].includes(key))}
 
 export function createNativeSessionAdapter(ctx){
-  const get=name=>ctx.get?.(name)??ctx[name],handles=new Map()
+  const get=name=>typeof ctx.get==='function'?ctx.get(name):ctx[name],handles=new Map()
   const readable=()=>typeof get('sessionQuery')?.observeSession==='function'&&typeof get('typertGateway')?.stream==='function'&&!!get('connection')?.browserPeer
   const restorable=()=>readable()&&['create','open','stat'].every(name=>typeof get('sessionPersistence')?.[name]==='function')&&typeof get('sessions')?.prepare==='function'&&typeof get('sessionProjections')?.hydrate==='function'&&typeof get('agents')?.resume==='function'&&typeof get('agentPresets')?.mount==='function'&&typeof get('agentPresets')?.list==='function'&&typeof get('llm')?.prepareCall==='function'
   async function authorize(sessionId,signal){

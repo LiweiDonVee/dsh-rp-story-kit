@@ -8,6 +8,13 @@ import {createStoryKitStore} from '../src/store.mjs'
 
 const api=await import('../src/host.mjs').catch(()=>({}))
 const rawText=await readFile(new URL('./fixtures/harbor-v2.json',import.meta.url),'utf8')
+
+test('an optional missing service uses public Context.get without reading a guarded Cordis proxy property',async t=>{
+  const directory=await mkdtemp(join(tmpdir(),'story-kit-optional-context-'));t.after(()=>rm(directory,{recursive:true,force:true}))
+  const context=new Proxy({get:()=>undefined,inject(){}},{get(target,key,receiver){if(Reflect.has(target,key))return Reflect.get(target,key,receiver);throw Error(`cannot get property ${String(key)} without inject`)}})
+  const service=await api.createStoryKitHost(context,{directory,skillDirectory:fileURLToPath(new URL('../skills/adapting-roleplay-story-assets/',import.meta.url))});t.after(()=>service.close())
+  await service.createPersona({persona:{name:'公开独立资产',description:''},expectedRevision:0});const state=await service.state({});assert.equal(state.personas.length,1);assert.equal(state.capabilities.launch,false);assert.equal(state.capabilities.savedStoryExport,false)
+})
 async function setup(t,database){assert.equal(typeof api.createStoryKitHost,'function','native asset owner service is available');const directory=await mkdtemp(join(tmpdir(),'story-kit-host-'));t.after(()=>rm(directory,{recursive:true,force:true}));const store=createStoryKitStore({directory});const service=await api.createStoryKitHost({get:name=>name==='rpDatabase'?database:undefined},{store});t.after(()=>service.close());return{store,service}}
 
 test('standalone asset library creates editable characters and personas while real launch is unavailable',async t=>{
