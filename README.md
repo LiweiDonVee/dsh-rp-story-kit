@@ -52,7 +52,7 @@ PNG 读取优先 ccv3，否则 chara；支持常见 tEXt 编码。优先元数�
 
 GM reservation 是执行门。只有宿主成功 create 并 flush、且任务已持久记录创建证据的 Session ID 才能续写。若在 create/flush 后、创建证据落盘前崩溃，重启无法自动确认归属：返回 RESTORE_ID_CONFLICT 并保留现场，需要明确的 owner 处理或空目标，不能仅凭相同内容接管。
 
-存档同时保留固定资产的 typed 默认库依赖、审阅后的启动配置及 GM 初始文风引用。即使当前故事明确选择空 sources 或 builtin，这些旧版本仍可作为被动库内容恢复，draft 保持 draft。当前文风和 overlay 继续由 LastStep 的实际绑定决定；GM.profile 只表示启动来源。依赖用途摘要以“当前绑定”和“资产/模板默认”展示已记录信息；单独出现在启动记录中的引用不因此成为资产默认，旧存档显示未记录。摘要不决定恢复权限或绑定。
+存档同时保留固定资产的 typed 默认库依赖、审阅后的启动配置及 GM 初始资料/文风引用。即使当前故事明确选择空 sources 或 builtin，这些旧版本仍可作为被动库内容恢复，draft 保持 draft。当前资料组合由 Database 决定，当前文风和 overlay 由 LastStep 决定；GM.sources/profile 只表示启动来源，没有 launch journal 也保留它们的精确库版本。依赖用途摘要以“当前绑定”和“资产/模板默认”展示已记录信息；单独出现在启动记录中的引用不因此成为资产默认，旧存档显示未记录。摘要不决定恢复权限或绑定。
 
 预检若列出 LOOP_NODE_VALIDATION，表示基础依赖通过，实际节点兼容性将在暂存、冷验证与无 prompt resume 后检查。节点、模型或插件缺失时保持 pending/未激活，保留原路由。Context 在来源环境缺席时记录 null；目标若装有 Context，只对恢复会话配置 disabled。详见 [存档与传输](docs/transfer.md)。
 

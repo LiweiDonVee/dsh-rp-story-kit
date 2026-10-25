@@ -1,8 +1,8 @@
 import {isDeepStrictEqual} from 'node:util'
-import {copy,fail,object,StoryKitError} from './assets.mjs'
+import {copy,fail,normalizeBindings,object,StoryKitError} from './assets.mjs'
 import {storageKey} from './store.mjs'
 import {headerIdentity,headersEqual,semanticHash,serializableData,sessionIds,transferData} from './identity.mjs'
-import {buildDependencySummary,collectAssetDefaults,collectAssetDependencies,mergeProfileRefs,validateDependencySummary} from './dependencies.mjs'
+import {buildDependencySummary,collectAssetDefaults,collectAssetDependencies,mergeDatabaseRefs,mergeProfileRefs,validateDependencySummary} from './dependencies.mjs'
 
 const ownerNames=['database','lastStep','gm','storyKit'],restoreOrder=['database','lastStep','context','gm','storyKit']
 const packages={database:'dsh-rp-database',lastStep:'dsh-rp-last-step',context:'dsh-rp-context',gm:'dsh-rp-gm',storyKit:'dsh-rp-story-kit',loop:'dsh-loop-studio'}
@@ -41,12 +41,12 @@ export function createSavedStoryCoordinator({store,host,getOwner}){
   const compatible=()=>getOwner('database')?.apiVersion===2&&getOwner('gm')?.apiVersion===1
   const exportAvailable=()=>compatible()&&host.readable()&&ownerNames.every(name=>has(name,['exportState','contentRevision']))&&(!getOwner('context')||has('context',['exportState','contentRevision']))&&(!getOwner('loop')||has('loop',['inspect','savePolicy']))&&has('gm',['binding'])
   const restoreAvailable=()=>compatible()&&host.restorable()&&ownerNames.every(name=>has(name,['preflightRestore','restoreState','contentRevision']))&&has('gm',['binding','reserveRestore','activateRestored'])&&has('lastStep',['profile'])
-  async function initialProfiles(ids,signal,code){const refs=[];for(const sessionId of ids){const binding=await getOwner('gm').binding({sessionId,signal}),profile=binding?.profile;if(typeof profile?.profileId!=='string'||!profile.profileId||!Number.isSafeInteger(profile.version)||profile.version<1)throw new StoryKitError(code,'缺少可解析的 GM 初始文风引用。',409,[{owner:'gm',ref:{sessionId}}]);refs.push(profile)}return mergeProfileRefs(refs)}
+  async function initialDependencies(ids,signal,code){const profiles=[],databases=[];for(const sessionId of ids){const binding=await getOwner('gm').binding({sessionId,signal}),profile=binding?.profile;if(typeof profile?.profileId!=='string'||!profile.profileId||!Number.isSafeInteger(profile.version)||profile.version<1||!Array.isArray(binding.sources))throw new StoryKitError(code,'缺少可解析的 GM 初始资料或文风引用。',409,[{owner:'gm',ref:{sessionId}}]);profiles.push(profile);databases.push(...normalizeBindings(binding.sources))}return{additionalProfileRefs:mergeProfileRefs(profiles),additionalDatabaseRefs:mergeDatabaseRefs(databases)}}
   async function summary(defaults,sessionId,signal){if(!has('database',['effectiveV2'])||!has('lastStep',['state']))return undefined;try{const database=await getOwner('database').effectiveV2({sessionId,signal}),lastStep=await getOwner('lastStep').state(sessionId,signal);if(!Array.isArray(database.binding?.sources)||typeof lastStep.binding?.profileId!=='string'||!Number.isSafeInteger(lastStep.binding?.version))return undefined;return buildDependencySummary(defaults,{sources:database.binding.sources,profile:{profileId:lastStep.binding.profileId,version:lastStep.binding.version}})}catch(error){if(error?.name==='AbortError')throw error;return undefined}}
   async function verifyLibraries(dependencies,ids,signal){
-    const profiles=mergeProfileRefs(dependencies.additionalProfileRefs,await initialProfiles(ids,signal,'RESTORE_REQUIREMENT_MISSING'))
+    const initial=await initialDependencies(ids,signal,'RESTORE_REQUIREMENT_MISSING'),profiles=mergeProfileRefs(dependencies.additionalProfileRefs,initial.additionalProfileRefs),databases=mergeDatabaseRefs(dependencies.additionalDatabaseRefs,initial.additionalDatabaseRefs)
     const missing=(owner,ref)=>new StoryKitError('RESTORE_REQUIREMENT_MISSING','固定资产或初始来源的精确库版本尚未恢复或暂不可读。',409,[{owner,ref:copy(ref)}])
-    for(const ref of dependencies.additionalDatabaseRefs){
+    for(const ref of databases){
       if(!has('database',['database']))throw missing('database',ref)
       let result
       try{result=await getOwner('database').database({...ref,signal})}catch(error){if(error?.name==='AbortError')throw error;throw missing('database',ref)}
@@ -150,8 +150,8 @@ export function createSavedStoryCoordinator({store,host,getOwner}){
         const loopPolicies=[],loopRevisions={}
         if(getOwner('loop')){if(!has('loop',['inspect','savePolicy']))fail('RESTORE_REQUIREMENT_MISSING','Loop policy 服务不完整。',409);for(const id of ids){const view=await getOwner('loop').inspect(id,combined);loopPolicies.push({sessionId:id,policy:policy(view.effectivePolicy)});loopRevisions[id]=view.revision}}
         pluginState.storyKit=await getOwner('storyKit').exportState({sessionIds:ids,signal:combined})
-        const dependencies=collectAssetDependencies(pluginState.storyKit),additionalProfileRefs=mergeProfileRefs(dependencies.additionalProfileRefs,await initialProfiles(ids,combined,'EXPORT_REQUIREMENT_MISSING')),dependencySummary=await summary(collectAssetDefaults(pluginState.storyKit),sessionId,combined)
-        for(const name of names){if(name==='storyKit')continue;const args={sessionIds:ids,signal:combined,...name==='database'?{additionalDatabaseRefs:dependencies.additionalDatabaseRefs}:name==='lastStep'?{additionalProfileRefs}:{}};pluginState[name]=await exportOwner(name,args,name==='database'?dependencies.additionalDatabaseRefs:name==='lastStep'?additionalProfileRefs:[])}
+        const dependencies=collectAssetDependencies(pluginState.storyKit),initial=await initialDependencies(ids,combined,'EXPORT_REQUIREMENT_MISSING'),additionalDatabaseRefs=mergeDatabaseRefs(dependencies.additionalDatabaseRefs,initial.additionalDatabaseRefs),additionalProfileRefs=mergeProfileRefs(dependencies.additionalProfileRefs,initial.additionalProfileRefs),dependencySummary=await summary(collectAssetDefaults(pluginState.storyKit),sessionId,combined)
+        for(const name of names){if(name==='storyKit')continue;const args={sessionIds:ids,signal:combined,...name==='database'?{additionalDatabaseRefs}:name==='lastStep'?{additionalProfileRefs}:{}};pluginState[name]=await exportOwner(name,args,name==='database'?additionalDatabaseRefs:name==='lastStep'?additionalProfileRefs:[])}
         for(const name of names){const after=(await getOwner(name).contentRevision({signal:combined})).revision;if(after!==before[name]||pluginState[name].revision!==after)fail('EXPORT_CHANGED','故事内容在导出期间变化，请显式重试。',409)}
         if(!sameSnapshots(sessions,await readChain(sessionId,combined)))fail('EXPORT_CHANGED','会话事件在导出期间变化，请显式重试。',409)
         if(getOwner('loop'))for(const row of loopPolicies){const view=await getOwner('loop').inspect(row.sessionId,combined);if(view.revision!==loopRevisions[row.sessionId]||!isDeepStrictEqual(view.effectivePolicy,row.policy))fail('EXPORT_CHANGED','Loop policy 在导出期间变化。',409)}

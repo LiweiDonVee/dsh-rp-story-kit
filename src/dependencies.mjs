@@ -3,6 +3,7 @@ import {copy,fail,identifier,normalizeBindings,object,version} from './assets.mj
 const key=(id,version)=>JSON.stringify([id,version])
 const ordered=map=>[...map.entries()].sort(([left],[right])=>left<right?-1:left>right?1:0).map(([,value])=>value)
 export function mergeProfileRefs(...lists){const found=new Map();for(const ref of lists.flat()){const value={profileId:identifier(ref.profileId),version:version(ref.version)};found.set(key(value.profileId,value.version),value)}return ordered(found)}
+export function mergeDatabaseRefs(...lists){const found=new Map();for(const ref of lists.flat()){const value={databaseId:identifier(ref.databaseId),version:version(ref.version)};found.set(key(value.databaseId,value.version),value)}return ordered(found)}
 function collectDependencies(state,includeLaunches){
   const payload=state.payload,databases=new Map(),profiles=[]
   const sources=refs=>{for(const binding of normalizeBindings(refs)){const ref={databaseId:binding.databaseId,version:binding.version};databases.set(key(ref.databaseId,ref.version),ref)}}
