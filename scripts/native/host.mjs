@@ -50,7 +50,7 @@ export async function stageInputs(input,run){
     const bytes=await readFile(item.path);if(hash(bytes)!==item.sha256)throw Error(`INPUT_HASH_MISMATCH:${item.name}`)
     const archive=join(directory,`${item.name}-${item.version}-${item.sha256}.tgz`);await writeFile(archive,bytes,{flag:'wx'})
     const manifest=JSON.parse((await archiveFile(archive,'package.json')).toString('utf8'));if(manifest.name!==item.name||manifest.version!==item.version)throw Error('PACKAGE_MANIFEST_MISMATCH')
-    const entries=[...new Set(['package.json',entryPath(manifest.main),entryPath(manifest.exports['./client']),entryPath(manifest.dsh.bundle.patch)])],files={}
+    const entries=[...new Set(['package.json',entryPath(manifest.main),entryPath(manifest.exports['./client']),entryPath(manifest.dsh.bundle.patch),'README.md','LICENSE'])],files={}
     for(const entry of entries)files[entry]=hash(await archiveFile(archive,entry))
     packages.push({...item,archive,files})
   }
