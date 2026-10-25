@@ -21,7 +21,7 @@ test('content pack round-trip remaps every asset/database/profile/template refer
   const first=(await service.asset({kind:'character',assetId:imported.assetId,version:1})).asset
   const saved=await service.saveCharacter({character:{...first,databaseRefs:[{key:'card',databaseId:'world',version:2}],profileRef:{profileId:'style',version:3}},expectedRevision:1})
   const player=await service.createPersona({persona:{name:'旅人',description:'测绘员'},expectedRevision:2})
-  const template={id:'start',title:'雾港起点',character:{assetId:saved.assetId,version:2},persona:{assetId:player.assetId,version:1},openingId:'alternate-1',sources:[{key:'card',databaseId:'world',version:2}],profile:{profileId:'style',version:3},initialScene:{title:'雾港',location:'码头',presentActorIds:[]},initialFacts:[{id:'tide',text:'已经退潮'}]}
+  const template={id:'start',title:'雾港起点',character:{assetId:saved.assetId,version:2},persona:{assetId:player.assetId,version:1},openingId:'alternate-1',sources:[{key:'card',databaseId:'world',version:2}],profile:{profileId:'style',version:3},initialScene:{schemaVersion:1,title:'雾港',location:'码头',presentActorIds:[]},initialFacts:{schemaVersion:1,items:[{id:'tide',text:'已经退潮'}]}}
   const{pack}=await service.exportPack({characters:[{assetId:saved.assetId,version:2}],personas:[{assetId:player.assetId,version:1}],templates:[template]})
   assert.equal(pack.format,'dsh-rp-story-pack');assert.equal(pack.databases[0].database.entries[0].readOnly,true)
   const destination=await setup(t,{rpDatabase:db,rpLastStep:rp}),result=await destination.service.importPack({pack,expectedRevision:0})
@@ -73,7 +73,7 @@ test('resource IDs are remapped without treating prototype-shaped pack IDs as ob
 
 test('template bindings obey the frozen SourceBinding slot contract before any import starts',async t=>{
   const{service}=await setup(t)
-  const pack={format:'dsh-rp-story-pack',schemaVersion:1,assets:[{kind:'character',asset:{id:'c',version:1,name:'设定',openings:[{id:'first',name:'开场',text:'雾'}],databaseRefs:[]}},{kind:'persona',asset:{id:'p',version:1,name:'玩家',description:''}}],databases:[{id:'book',version:1,database:{id:'book',version:1,name:'资料',entries:[]}}],profiles:[],storyTemplates:[{id:'start',title:'起点',character:{assetId:'c',version:1},persona:{assetId:'p',version:1},openingId:'first',sources:[{key:'@session',databaseId:'book',version:1}],initialScene:{title:'港口'},initialFacts:[]}],resources:[],requirements:[]}
+  const pack={format:'dsh-rp-story-pack',schemaVersion:1,assets:[{kind:'character',asset:{id:'c',version:1,name:'设定',openings:[{id:'first',name:'开场',text:'雾'}],databaseRefs:[]}},{kind:'persona',asset:{id:'p',version:1,name:'玩家',description:''}}],databases:[{id:'book',version:1,database:{id:'book',version:1,name:'资料',entries:[]}}],profiles:[],storyTemplates:[{id:'start',title:'起点',character:{assetId:'c',version:1},persona:{assetId:'p',version:1},openingId:'first',sources:[{key:'@session',databaseId:'book',version:1}],initialScene:{schemaVersion:1,title:'港口',location:'码头',presentActorIds:[]},initialFacts:{schemaVersion:1,items:[]}}],resources:[],requirements:[]}
   await assert.rejects(service.previewPack({pack}),{code:'INVALID_ASSET'})
 })
 

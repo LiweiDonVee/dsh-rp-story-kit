@@ -1,6 +1,9 @@
 import {createHash,randomUUID} from 'node:crypto'
+import {isDeepStrictEqual} from 'node:util'
 import {StoryKitError,copy,fail,identifier,normalizeBindings,normalizeCharacter,normalizePersona,object,version} from './assets.mjs'
 import {appendAsset,storageKey} from './store.mjs'
+import {importCharacter} from './import.mjs'
+import {validateStorySeed} from './seeds.mjs'
 
 export const packKey=(id,version)=>JSON.stringify([id,version])
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex')
@@ -27,10 +30,21 @@ function sourcePayload(value){
   if(value.rawText!==undefined&&typeof value.rawText!=='string'||value.provenance!==undefined&&!object(value.provenance)||value.rawText===undefined&&value.dataBase64===undefined)fail('INVALID_PACK','原件来源格式无效。')
   const bytes=value.dataBase64!==undefined?b64(value.dataBase64):Buffer.from(value.rawText,'utf8')
   if(value.sha256!==digest(bytes))fail('INVALID_PACK','原件来源哈希不匹配。')
-  let parsed
-  if(value.rawText!==undefined){try{parsed=JSON.parse(value.rawText.replace(/^\uFEFF/u,''))}catch{/* Non-JSON data remains inert source text. */}if(parsed!==undefined)dataOnly(parsed)}
+  let rawText,parsed
+  if(['json-v2','json-v3','png-chara','png-ccv3'].includes(value.format)){
+    // Reuse actual JSON/PNG parsing, including preferred metadata, CRC and APNG checks.
+    const authoritative=importCharacter(bytes).source
+    if(authoritative.format!==value.format)fail('INVALID_PACK','原件来源格式与实际字节不一致。')
+    rawText=authoritative.rawText;parsed=authoritative.provenance
+  }else{
+    try{rawText=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes)}catch{if(value.rawText!==undefined)fail('INVALID_PACK','原件文本无法从原始字节解码。')}
+    if(rawText!==undefined){try{parsed=JSON.parse(rawText.replace(/^\uFEFF/u,''))}catch{/* Unsupported non-JSON sources retain inert metadata only. */}}
+  }
+  if(value.rawText!==undefined&&value.rawText!==rawText)fail('INVALID_PACK','原件文本与原始字节不一致。')
+  if(object(parsed)&&value.provenance!==undefined&&!isDeepStrictEqual(value.provenance,parsed))fail('INVALID_PACK','原件 provenance 与原始字节解析结果不一致。')
+  if(parsed!==undefined)dataOnly(parsed)
   dataOnly(value)
-  return{...copy(value),provenance:copy(value.provenance??(object(parsed)?parsed:{}))}
+  return{...copy(value),...rawText!==undefined?{rawText}:{},provenance:copy(object(parsed)?parsed:value.provenance??{})}
 }
 function unique(items,keyFn,label){const seen=new Set();for(const item of items){const key=keyFn(item);if(seen.has(key))fail('INVALID_PACK',`${label} 身份重复。`);seen.add(key)}return seen}
 function refKey(ref,idField){if(!object(ref))fail('INVALID_PACK','内容引用必须是对象。');return packKey(identifier(ref[idField]),version(ref.version))}
@@ -58,7 +72,8 @@ export function validatePack(input){
   unique(pack.storyTemplates,item=>identifier(item.id),'模板')
   for(const template of pack.storyTemplates){
     keys(template,['id','title','character','persona','openingId','sources','profile','initialScene','initialFacts'])
-    if(typeof template.title!=='string'||!template.title.trim()||!object(template.initialScene)||template.initialFacts===undefined)fail('INVALID_PACK','故事模板需要名称与用户审阅的初始场景/事实。')
+    if(typeof template.title!=='string'||!template.title.trim())fail('INVALID_PACK','故事模板需要名称。')
+    validateStorySeed({initialScene:template.initialScene,initialFacts:template.initialFacts})
     requireRef(assetIds,refKey(template.character,'assetId'));requireRef(assetIds,refKey(template.persona,'assetId'))
     const character=pack.assets.find(item=>item.kind==='character'&&packKey(item.asset.id,item.asset.version)===refKey(template.character,'assetId'))
     const persona=pack.assets.find(item=>item.kind==='persona'&&packKey(item.asset.id,item.asset.version)===refKey(template.persona,'assetId'))

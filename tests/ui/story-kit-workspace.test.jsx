@@ -65,4 +65,30 @@ describe('native Story Kit asset editor',()=>{
     show(client);fireEvent.click(screen.getByRole('button',{name:'新建玩家身份'}));fireEvent.change(screen.getByLabelText('名称'),{target:{value:'旅人'}});fireEvent.click(screen.getByRole('button',{name:'保存新版本'}))
     await screen.findByRole('alert');expect(screen.getByLabelText('名称')).toHaveValue('旅人');expect(screen.queryByText('内容包已导入，仍需审阅。')).toBeNull()
   })
+
+  it('keeps the draft usable after hide aborts a mutation and allows a new save after reopening',async()=>{
+    const{client}=await setup(),create=client.createPersona;let firstSignal,attempts=0
+    client.createPersona=input=>{attempts++;if(attempts!==1)return create(input);firstSignal=input.signal;return new Promise((_resolve,reject)=>input.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true}))}
+    const view=show(client);fireEvent.click(screen.getByRole('button',{name:'新建玩家身份'}));fireEvent.change(screen.getByLabelText('名称'),{target:{value:'中断后保留的旅人'}});fireEvent.click(screen.getByRole('button',{name:'保存新版本'}))
+    await waitFor(()=>expect(firstSignal).toBeDefined())
+    await act(async()=>{view.rerender(<ui.StoryKitWorkspace client={client} visible={false}/>);await Promise.resolve()})
+    expect(firstSignal.aborted).toBe(true)
+    await act(async()=>{view.rerender(<ui.StoryKitWorkspace client={client} visible={true}/>);await Promise.resolve()})
+    expect(screen.getByLabelText('名称')).toHaveValue('中断后保留的旅人');expect(screen.getByRole('button',{name:'保存新版本'})).toBeEnabled();expect(screen.getByRole('button',{name:'新建玩家身份'})).toBeEnabled()
+    fireEvent.click(screen.getByRole('button',{name:'保存新版本'}));await screen.findByText('已保存版本 1')
+    expect((await client.state({})).personas).toHaveLength(1)
+  })
+
+  it('does not let a hidden lifetime completion release the busy state of a newer mutation',async()=>{
+    const{client}=await setup(),create=client.createPersona;let rejectOld,finishNew,attempts=0
+    client.createPersona=input=>{attempts++;if(attempts===1)return new Promise((_resolve,reject)=>{rejectOld=reject});return new Promise((resolve,reject)=>{finishNew=()=>create(input).then(resolve,reject)})}
+    const view=show(client);fireEvent.click(screen.getByRole('button',{name:'新建玩家身份'}));fireEvent.change(screen.getByLabelText('名称'),{target:{value:'新周期旅人'}});fireEvent.click(screen.getByRole('button',{name:'保存新版本'}))
+    await waitFor(()=>expect(rejectOld).toBeTypeOf('function'))
+    await act(async()=>{view.rerender(<ui.StoryKitWorkspace client={client} visible={false}/>)})
+    await act(async()=>{view.rerender(<ui.StoryKitWorkspace client={client} visible={true}/>)})
+    expect(screen.getByRole('button',{name:'保存新版本'})).toBeEnabled();fireEvent.click(screen.getByRole('button',{name:'保存新版本'}));await waitFor(()=>expect(finishNew).toBeTypeOf('function'))
+    await act(async()=>{rejectOld(new DOMException('Old aborted operation','AbortError'));await Promise.resolve()})
+    expect(screen.getByRole('button',{name:'保存新版本'})).toBeDisabled();expect(screen.queryByRole('alert')).toBeNull()
+    await act(async()=>{await finishNew()});await screen.findByText('已保存版本 1');expect(screen.getByRole('button',{name:'保存新版本'})).toBeEnabled()
+  })
 })

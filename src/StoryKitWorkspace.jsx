@@ -11,7 +11,7 @@ function base64(data){let text='';for(const value of data)text+=String.fromCharC
 
 export function StoryKitWorkspace({visible=true,client=defaultClient}){
   const[library,setLibrary]=useState(emptyLibrary),[view,setView]=useState('library'),[kind,setKind]=useState('character'),[draft,setDraft]=useState(null),[baseRevision,setBaseRevision]=useState(0),[dirty,setDirty]=useState(false),[source,setSource]=useState(null),[showSource,setShowSource]=useState(false),[diagnostics,setDiagnostics]=useState([]),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[raw,setRaw]=useState(''),[openingId,setOpeningId]=useState(''),[personaRef,setPersonaRef]=useState(''),[pending,setPending]=useState(null),[packText,setPackText]=useState(''),[packPreview,setPackPreview]=useState(null),[exported,setExported]=useState('')
-  const life=useRef(null),request=useRef(null),generation=useRef(0),dirtyRef=useRef(false),fileGeneration=useRef(0)
+  const life=useRef(null),request=useRef(null),generation=useRef(0),dirtyRef=useRef(false),fileGeneration=useRef(0),mutationOwner=useRef(null)
   dirtyRef.current=dirty
   async function refresh(signal){const next=await client.state({signal});if(!signal?.aborted)setLibrary(previous=>next.revision>=previous.revision?next:previous);return next}
   useEffect(()=>{
@@ -19,7 +19,12 @@ export function StoryKitWorkspace({visible=true,client=defaultClient}){
     const controller=new AbortController();life.current=controller
     void refresh(controller.signal).catch(cause=>{if(!controller.signal.aborted)setError(cause.message)})
     const close=client.subscribe(()=>{void refresh(controller.signal).catch(cause=>{if(!controller.signal.aborted)setError(cause.message)})},()=>{if(!controller.signal.aborted)setStatus('正在重新同步资产库')})
-    return()=>{controller.abort();request.current?.abort();generation.current++;fileGeneration.current++;close();life.current=null}
+    return()=>{
+      if(mutationOwner.current?.lifetime===controller){mutationOwner.current=null;setBusy(false)}
+      controller.abort()
+      if(life.current===controller){request.current?.abort();generation.current++;fileGeneration.current++;life.current=null}
+      close()
+    }
   },[visible,client])
   function startRequest(){request.current?.abort();const controller=new AbortController();request.current=controller;const token=++generation.current;return{signal:life.current?AbortSignal.any([controller.signal,life.current.signal]):controller.signal,token}}
   const current=({signal,token})=>!signal.aborted&&generation.current===token
@@ -38,7 +43,9 @@ export function StoryKitWorkspace({visible=true,client=defaultClient}){
   function newAsset(nextKind,force=false){if(dirtyRef.current&&!force){setPending({newKind:nextKind});return}startRequest();setKind(nextKind);setDraft(nextKind==='character'?emptyCharacter():emptyPersona());setSource(null);setShowSource(false);setBaseRevision(library.revision);setDirty(false);setView('library');setError('');setStatus('');setDiagnostics([]);setPending(null);setOpeningId(nextKind==='character'?'first':'')}
   function change(update){setDraft(previous=>({...previous,...update}));setDirty(true);setStatus('')}
   async function mutate(work,{selectKind=kind}={}){
-    if(busy)return
+    if(mutationOwner.current||!life.current||life.current.signal.aborted)return
+    const owner={lifetime:life.current};mutationOwner.current=owner
+    const ownsMutation=()=>mutationOwner.current===owner&&life.current===owner.lifetime&&!owner.lifetime.signal.aborted
     const operation=startRequest();setBusy(true);setError('');setStatus('')
     try{
       const result=await work(operation.signal)
@@ -49,11 +56,11 @@ export function StoryKitWorkspace({visible=true,client=defaultClient}){
       if(!assetReceipt&&!packReceipt)throw new Error('资产响应不完整，请重新载入。')
       await refresh(operation.signal)
       if(!current(operation))return
-      if(result.assetId&&Number.isSafeInteger(result.version)){await load({kind:selectKind,assetId:result.assetId,version:result.version},true);if(life.current&&!life.current.signal.aborted){setStatus(`已保存版本 ${result.version}`);setDiagnostics(result.diagnostics??[])}}
+      if(result.assetId&&Number.isSafeInteger(result.version)){await load({kind:selectKind,assetId:result.assetId,version:result.version},true);if(ownsMutation()){setStatus(`已保存版本 ${result.version}`);setDiagnostics(result.diagnostics??[])}}
       else{setStatus('内容包已导入，仍需审阅。');setView('library');setPackPreview(null)}
       return result
     }catch(cause){if(current(operation)){setError(cause.message);setDiagnostics(cause.diagnostics??[])}}
-    finally{if(life.current&&!life.current.signal.aborted)setBusy(false)}
+    finally{if(mutationOwner.current===owner){mutationOwner.current=null;if(life.current===owner.lifetime&&!owner.lifetime.signal.aborted)setBusy(false)}}
   }
   async function save(){const value=structuredClone(draft),method=value.id?(kind==='character'?'saveCharacter':'savePersona'):(kind==='character'?'createCharacter':'createPersona');await mutate(signal=>client[method]({[kind]:value,expectedRevision:baseRevision,signal}))}
   async function importText(){await mutate(signal=>client.importAsset({format:'json',rawText:raw,expectedRevision:library.revision,signal}),{selectKind:'character'})}
