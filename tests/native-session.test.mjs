@@ -11,6 +11,13 @@ test('missing optional native services stay unavailable without reading undeclar
   assert.equal(adapter.readable(),false);assert.equal(adapter.restorable(),false)
 })
 
+test('fresh seeded persistence becomes a valid original log before any read or durable creation acknowledgement',async()=>{
+  const data=fixture(),create=data.services.sessionPersistence.create,seeded={...session,events:[session.events[0],{seq:1,time:1792927680002,type:'session/end-seed',data:{inherited:true}},{...session.events[1],seq:2,time:1792927680003}]};let atProof
+  data.services.sessionPersistence.create=async(...args)=>{const handle=await create(...args);return{...handle,read:async()=>{if(!data.stored.get(seeded.header.id).events.some(event=>event.type==='session/end-seed'&&event.data.inherited===true))throw Error('released v2 seeded Session lacks an inherited end-seed marker');return handle.read()}}}
+  await native(data.ctx).writeSession({session:seeded,owned:false,onCreated:()=>{atProof=structuredClone(data.stored.get(seeded.header.id).events)}})
+  assert.deepEqual(atProof,seeded.events);assert.deepEqual(data.stored.get(seeded.header.id),seeded);assert.equal(data.log.filter(row=>row[0]==='append').length,1)
+})
+
 test('native adapter uses exact public persistence metadata, flush/close, cold validation and no-prompt resume',async()=>{
   const data=fixture(),host=native(data.ctx)
   await host.writeSession({session,owned:false});await host.coldValidate({session});await host.resumeSession({session})
