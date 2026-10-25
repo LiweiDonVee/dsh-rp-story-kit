@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {createSavedStoryCoordinator} from '../src/saved-story.mjs'
 import {savedFixture} from './helpers/saved-fixture.mjs'
 import {collectAssetDependencies} from '../src/dependencies.mjs'
+import {createLaunchService} from '../src/launch.mjs'
 
 const owner=environment=>createSavedStoryCoordinator({store:environment.store,host:environment.host,getOwner:environment.getOwner}),key=(id,version)=>JSON.stringify([id,version])
 
@@ -47,6 +48,20 @@ test('initial GM style remains retained provenance while current style and summa
   const destination=await savedFixture(t);assert.equal((await owner(destination).restoreSavedStory({snapshot,restoreId:'initial-vs-current'})).status,'complete');assert.equal(destination.libraries.lastStep.get(key('Initial',1)).version,1);assert.deepEqual(destination.bindings.get('child').profile,{profileId:'Initial',version:1});assert.deepEqual(destination.runtimeBindings.lastStep.get('child'),{profileId:'Style',version:2})
 })
 
+test('a persisted reviewed launch retains Initial dependencies without relabeling them as asset defaults after Current rebind',async t=>{
+  const source=await savedFixture(t,{source:true,assetDefaults:true}),gm=source.getOwner('gm'),database=source.getOwner('database'),lastStep=source.getOwner('lastStep'),binding=source.bindings.get('child')
+  for(const id of ['Initial','Current'])source.libraries.lastStep.set(key(id,1),{id,version:1,name:id,status:'ready',sourceId:null,entries:[]})
+  for(const id of ['StartupBook','CurrentBook'])source.libraries.database.set(key(id,1),{id,version:1,name:id,entries:[]})
+  const launch=createLaunchService({store:source.store,getGM:()=>({...gm,startStory:async request=>{Object.assign(binding,{launchId:request.launchId,character:request.character,persona:request.persona,opening:request.opening,examples:request.examples,sources:request.sources,profile:request.profile});return{sessionId:'child',binding,status:'active'}}}),getDatabase:()=>({...database,bindSources(){},initializeStoryState(){}}),getLastStep:()=>({...lastStep,bindSession(){},ensureBuiltinProfile(){}})})
+  await launch.launch({launchId:'reviewed-initial',character:{assetId:binding.character.assetId,version:1},persona:{assetId:binding.persona.assetId,version:1},openingId:'first',sources:[{key:'startup',databaseId:'StartupBook',version:1}],profile:{profileId:'Initial',version:1},initialScene:{schemaVersion:1,title:'港口',location:'码头',presentActorIds:[]},initialFacts:{schemaVersion:1,items:[]}})
+  source.runtimeBindings.database.set('child',[{key:'current',databaseId:'CurrentBook',version:1}]);source.runtimeBindings.lastStep.set('child',{profileId:'Current',version:1})
+  const snapshot=(await owner(source).exportSavedStory({sessionId:'child'})).snapshot
+  assert.equal(snapshot.pluginState.storyKit.payload.launches.length,1)
+  assert.deepEqual(snapshot.dependencySummary,{databases:[{databaseId:'CurrentBook',version:1,uses:['current-binding']},{databaseId:'World',version:1,uses:['asset-default']}],profiles:[{profileId:'Current',version:1,uses:['current-binding']},{profileId:'Style',version:1,uses:['asset-default']}]})
+  assert.ok(snapshot.pluginState.database.payload.libraries.some(item=>item.id==='StartupBook'));assert.ok(snapshot.pluginState.lastStep.payload.libraries.some(item=>item.id==='Initial'))
+  const destination=await savedFixture(t);assert.equal((await owner(destination).restoreSavedStory({snapshot,restoreId:'reviewed-initial'})).status,'complete');assert.equal(destination.libraries.lastStep.has(key('Initial',1)),true);assert.equal(destination.libraries.database.has(key('StartupBook',1)),true);assert.deepEqual(destination.runtimeBindings.lastStep.get('child'),{profileId:'Current',version:1});assert.equal(destination.libraries.lastStep.get(key('Style',1)).status,'draft')
+})
+
 test('a dropped passive owner version cannot complete restoration even if an informational summary claims it exists',async t=>{
   const source=await savedFixture(t,{source:true,assetDefaults:true}),snapshot=(await owner(source).exportSavedStory({sessionId:'child'})).snapshot
   snapshot.pluginState.database.payload.libraries=[]
@@ -54,7 +69,7 @@ test('a dropped passive owner version cannot complete restoration even if an inf
   assert.equal(result.status,'pending');assert.equal(result.diagnostics[0].code,'RESTORE_REQUIREMENT_MISSING');assert.equal(destination.log.includes('gm.activate'),false);assert.equal(destination.live.size,0)
 })
 
-test('collection follows typed pinned/template refs only and never invents V1 from document IDs or provenance strings',()=>{
+test('closure follows typed pinned/launch refs only and never invents V1 from document IDs or provenance strings',()=>{
   const projection={payload:{characters:[{databaseRefs:[{key:'typed',databaseId:'World',version:2}],profileRef:{profileId:'Style',version:2}}],launches:[{request:{sources:[{key:'template',databaseId:'TemplateBook',version:5}],profile:{profileId:'TemplateStyle',version:5}}}],sources:[{provenance:{document:{databaseId:'World'},databaseRefs:[{databaseId:'World',version:1}],profileRef:{profileId:'Style',version:1},url:'https://example.invalid/not-a-dependency'}}]}}
   assert.deepEqual(collectAssetDependencies(projection),{additionalDatabaseRefs:[{databaseId:'TemplateBook',version:5},{databaseId:'World',version:2}],additionalProfileRefs:[{profileId:'Style',version:2},{profileId:'TemplateStyle',version:5}]})
 })

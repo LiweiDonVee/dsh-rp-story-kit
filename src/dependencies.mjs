@@ -3,14 +3,16 @@ import {copy,fail,identifier,normalizeBindings,object,version} from './assets.mj
 const key=(id,version)=>JSON.stringify([id,version])
 const ordered=map=>[...map.entries()].sort(([left],[right])=>left<right?-1:left>right?1:0).map(([,value])=>value)
 export function mergeProfileRefs(...lists){const found=new Map();for(const ref of lists.flat()){const value={profileId:identifier(ref.profileId),version:version(ref.version)};found.set(key(value.profileId,value.version),value)}return ordered(found)}
-export function collectAssetDependencies(state){
+function collectDependencies(state,includeLaunches){
   const payload=state.payload,databases=new Map(),profiles=[]
   const sources=refs=>{for(const binding of normalizeBindings(refs)){const ref={databaseId:binding.databaseId,version:binding.version};databases.set(key(ref.databaseId,ref.version),ref)}}
   for(const character of payload.characters){sources(character.databaseRefs);if(character.profileRef)profiles.push(character.profileRef)}
-  // These are the included immutable reviewed templates, not arbitrary provenance or library scans.
-  for(const launch of payload.launches){sources(launch.request.sources);if(launch.request.profile)profiles.push(launch.request.profile)}
+  // Reviewed launch configuration belongs in the closure, but is not an asset/template default.
+  if(includeLaunches)for(const launch of payload.launches){sources(launch.request.sources);if(launch.request.profile)profiles.push(launch.request.profile)}
   return{additionalDatabaseRefs:ordered(databases),additionalProfileRefs:mergeProfileRefs(profiles)}
 }
+export const collectAssetDefaults=state=>collectDependencies(state,false)
+export const collectAssetDependencies=state=>collectDependencies(state,true)
 export function buildDependencySummary(defaults,current){
   const databases=new Map(),profiles=new Map()
   function add(map,ref,idField,use){const id=identifier(ref[idField]),number=version(ref.version),identity=key(id,number),row=map.get(identity)??{[idField]:id,version:number,uses:[]};if(!row.uses.includes(use))row.uses.push(use);row.uses=['current-binding','asset-default'].filter(value=>row.uses.includes(value));map.set(identity,row)}

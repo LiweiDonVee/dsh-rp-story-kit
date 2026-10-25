@@ -2,7 +2,7 @@ import {isDeepStrictEqual} from 'node:util'
 import {copy,fail,object,StoryKitError} from './assets.mjs'
 import {storageKey} from './store.mjs'
 import {headerIdentity,headersEqual,semanticHash,serializableData,sessionIds,transferData} from './identity.mjs'
-import {buildDependencySummary,collectAssetDependencies,mergeProfileRefs,validateDependencySummary} from './dependencies.mjs'
+import {buildDependencySummary,collectAssetDefaults,collectAssetDependencies,mergeProfileRefs,validateDependencySummary} from './dependencies.mjs'
 
 const ownerNames=['database','lastStep','gm','storyKit'],restoreOrder=['database','lastStep','context','gm','storyKit']
 const packages={database:'dsh-rp-database',lastStep:'dsh-rp-last-step',context:'dsh-rp-context',gm:'dsh-rp-gm',storyKit:'dsh-rp-story-kit',loop:'dsh-loop-studio'}
@@ -150,7 +150,7 @@ export function createSavedStoryCoordinator({store,host,getOwner}){
         const loopPolicies=[],loopRevisions={}
         if(getOwner('loop')){if(!has('loop',['inspect','savePolicy']))fail('RESTORE_REQUIREMENT_MISSING','Loop policy 服务不完整。',409);for(const id of ids){const view=await getOwner('loop').inspect(id,combined);loopPolicies.push({sessionId:id,policy:policy(view.effectivePolicy)});loopRevisions[id]=view.revision}}
         pluginState.storyKit=await getOwner('storyKit').exportState({sessionIds:ids,signal:combined})
-        const dependencies=collectAssetDependencies(pluginState.storyKit),additionalProfileRefs=mergeProfileRefs(dependencies.additionalProfileRefs,await initialProfiles(ids,combined,'EXPORT_REQUIREMENT_MISSING')),dependencySummary=await summary(dependencies,sessionId,combined)
+        const dependencies=collectAssetDependencies(pluginState.storyKit),additionalProfileRefs=mergeProfileRefs(dependencies.additionalProfileRefs,await initialProfiles(ids,combined,'EXPORT_REQUIREMENT_MISSING')),dependencySummary=await summary(collectAssetDefaults(pluginState.storyKit),sessionId,combined)
         for(const name of names){if(name==='storyKit')continue;const args={sessionIds:ids,signal:combined,...name==='database'?{additionalDatabaseRefs:dependencies.additionalDatabaseRefs}:name==='lastStep'?{additionalProfileRefs}:{}};pluginState[name]=await exportOwner(name,args,name==='database'?dependencies.additionalDatabaseRefs:name==='lastStep'?additionalProfileRefs:[])}
         for(const name of names){const after=(await getOwner(name).contentRevision({signal:combined})).revision;if(after!==before[name]||pluginState[name].revision!==after)fail('EXPORT_CHANGED','故事内容在导出期间变化，请显式重试。',409)}
         if(!sameSnapshots(sessions,await readChain(sessionId,combined)))fail('EXPORT_CHANGED','会话事件在导出期间变化，请显式重试。',409)
