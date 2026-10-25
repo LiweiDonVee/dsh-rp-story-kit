@@ -2,14 +2,14 @@
 
 DSH 原生角色与玩家资产库：导入 Character Card V2/V3 JSON 或常见 chara/ccv3 静态 PNG，保留原件，编辑版本、玩家身份与多个开场，交换数据内容包。世界设定卡也可以直接保存。
 
-当前为 **0.1.0 实现检查点**：包含共享 GM 启动接线、阅读稿与精确身份存档协调。入口按当前真实服务能力启用；完整原生整链验收与发布由协调方统一进行。检查证据的范围见 [验收说明](docs/acceptance.md)。
+**Story Kit 0.1.0** 提供版本化资产、共享 GM 故事启动、Markdown/TXT 阅读稿、内容包交换与精确身份故事存档。各入口按已安装插件的实际能力启用。验证方法与适用边界见 [验收说明](docs/acceptance.md)。
 
 ## 安装与使用
 
-目标宿主 **DSH 0.2.1-rc.3**，Node >=24。开发完成的本地包可以安装到 DSH profile：
+目标宿主 **DSH 0.2.1-rc.3**，Node >=24。从项目 [Releases](https://github.com/LiweiDonVee/dsh-rp-story-kit/releases) 获取安装包，完全退出 DSH 后安装到目标 profile：
 
 ```powershell
-dsh plugin --profile desktop add ./artifacts/dsh-rp-story-kit-0.1.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-story-kit-0.1.0.tgz
 ```
 
 重启 DSH 后，点击会话顶部或空白会话的“资产”，打开右侧原生面板；若安装 RP Studio，工作区内也有入口。资产库无需 GM、Database 或 LastStep 即可使用。侧栏尺寸、全屏与主题由宿主管理。

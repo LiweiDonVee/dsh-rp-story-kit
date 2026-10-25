@@ -1,6 +1,6 @@
 # Validation scope
 
-The implementation checkpoint has automated parser/store/source-integrity, strict seed, document-content, launch/reading, owner transfer and SavedStory coordinator tests; native UI tests use real React components and typed owner boundaries. Native adapter tests cover public persistence arguments, close/cold/resume ordering, owner reads, exact prefixes, inherited counts, cancellation and the narrowly allowed header/end-seed behavior.
+Automated checks cover parser/store/source integrity, strict seed, document content, launch/reading, owner transfer and SavedStory coordination; UI tests use real React components and typed owner boundaries. Native adapter tests cover public persistence arguments, fresh original-log initialization, close/cold/resume ordering, owner reads, exact prefixes, inherited counts, cancellation and the narrowly allowed header/end-seed behavior.
 
 Deterministic service/host fixtures exist only under tests. They do not establish native tool acceptance, model quality or actual rc.3 cross-home recovery. Their event envelopes use public Session types; no test fixture is shipped as a production runtime/provider.
 
