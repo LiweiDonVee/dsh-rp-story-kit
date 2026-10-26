@@ -1,6 +1,6 @@
 # Story transfer
 
-Use content packs for reusable material and SavedStory for a whole generic GM story. Reading export is Markdown/TXT from the active LastStep narratives projection.
+Use content packs for reusable material and SavedStory for a whole generic GM story. Reading export is Markdown/TXT from LastStep.storyHistory.records when available. It excludes older accepted versions retained in canonical narratives. A current fact revision without accepted prose contributes no old body. Without storyHistory, legacy data still uses narratives; known narrative versions or public active/pending captured fact groups require the effective reader and return EFFECTIVE_HISTORY_UNAVAILABLE when it is missing.
 
 ## Content packs and documents
 
@@ -30,6 +30,8 @@ GM.binding.sources is likewise initial launch provenance. Every included public 
 For example, a card defaulting to WorldV1/StyleV1 may currently run with sources=[] and builtin. The snapshot retains WorldV1/StyleV1 as library-only content; draft StyleV1 stays draft, while current empty sources/builtin remain unchanged. A later legitimate LastStep rebind remains current; GM.profile is launch provenance only. Restore checks retained exact versions without auto-binding them or applying ready validation to passive draft defaults.
 
 Context is null when absent from the source environment. Existing disabled Context still exports its real owner state. Source documents/assets/profiles and all required causal/audit state remain within their owning provider envelopes; no unrelated whole store or derived vector cache is bundled.
+
+Fact candidates, pending or confirmed-but-unfinalized decision intents, completed fact/prose revisions, review settings and projection evidence travel inside the unchanged owner envelopes. StoryKit forwards those payloads to the owner's preflightRestore and restoreState without deriving approval or current facts from uploaded status fields. Corresponding owners validate their own canonical sources, decision completion and revision proofs. An incompatible destination reports the owner's requirements/conflicts; restore does not approve a candidate or call models to repair one. The outer SavedStory and content-pack formats remain schemaVersion 1.
 
 ## Restore order and interrupted jobs
 

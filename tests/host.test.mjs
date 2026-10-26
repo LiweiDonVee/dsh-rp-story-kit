@@ -70,3 +70,13 @@ test('production host projects actual launch/reading dependencies and persists r
   services.rpGM.binding=async()=>{throw Object.assign(new Error('private unavailable detail'),{code:'UNAVAILABLE',status:503})}
   const degraded=await service.state({});assert.equal(degraded.characters.length,1);assert.equal(degraded.pendingLaunches[0].errorCode,'UNAVAILABLE')
 })
+
+test('production reading capability follows the actual effective reader and detects captured facts through the Database owner',async t=>{
+  const directory=await mkdtemp(join(tmpdir(),'story-kit-effective-reading-'));t.after(()=>rm(directory,{recursive:true,force:true}))
+  const services={rpLastStep:{storyHistory:async()=>({schemaVersion:1,records:[],folded:[],projectionKey:'empty'})},rpDatabase:{apiVersion:2,factReviewProjection:async()=>({schemaVersion:1,latestRoundId:'round',groups:[{roundId:'round',source:{turnStartSeq:1,assistantMessageId:'main',callId:'fact',callSeq:2},activeReceiptId:'fact-current',factRevision:2,pendingCandidateId:null}]})}}
+  const service=await api.createStoryKitHost({get:name=>services[name]},{directory});t.after(()=>service.close())
+  assert.equal((await service.state({})).capabilities.readingExport,true)
+  assert.equal((await service.exportReading({sessionId:'story',format:'text'})).text,'\n')
+  services.rpLastStep={narratives:async()=>({records:[{text:'历史正文。'}]})}
+  await assert.rejects(service.exportReading({sessionId:'story',format:'text'}),{code:'EFFECTIVE_HISTORY_UNAVAILABLE'})
+})

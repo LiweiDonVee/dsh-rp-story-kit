@@ -2,14 +2,14 @@
 
 DSH 原生角色与玩家资产库：导入 Character Card V2/V3 JSON 或常见 chara/ccv3 静态 PNG，保留原件，编辑版本、玩家身份与多个开场，交换数据内容包。世界设定卡也可以直接保存。
 
-**Story Kit 0.1.0** 提供版本化资产、共享 GM 故事启动、Markdown/TXT 阅读稿、内容包交换与精确身份故事存档。各入口按已安装插件的实际能力启用。验证方法与适用边界见 [验收说明](docs/acceptance.md)。
+**Story Kit 0.2.0** 提供版本化资产、共享 GM 故事启动、Markdown/TXT 阅读稿、内容包交换与精确身份故事存档。阅读稿采用 LastStep 的当前有效正文。各入口按已安装插件的实际能力启用。验证方法与适用边界见 [验收说明](docs/acceptance.md)。
 
 ## 安装与使用
 
 目标宿主 **DSH 0.2.1-rc.3**，Node >=24。从项目 [Releases](https://github.com/LiweiDonVee/dsh-rp-story-kit/releases) 获取安装包，完全退出 DSH 后安装到目标 profile：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-story-kit-0.1.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-story-kit-0.2.0.tgz
 ```
 
 重启 DSH 后，点击会话顶部或空白会话的“资产”，打开右侧原生面板；若安装 RP Studio，工作区内也有入口。资产库无需 GM、Database 或 LastStep 即可使用。侧栏尺寸、全屏与主题由宿主管理。
@@ -24,7 +24,7 @@ PNG 读取优先 ccv3，否则 chara；支持常见 tEXt 编码。优先元数�
 
 ## 开始与继续故事
 
-组合版本为 GM0.1、Database0.2、LastStep0.3；Context0.2 与 Loop0.1 可选。将所需包安装到同一个 DSH profile。
+旧版组合 GM0.1、Database0.2、LastStep0.3 仍支持原有故事；事实审批与修订使用 GM0.2、Database0.3、LastStep0.4，配套 Context0.3，Loop0.1 保持可选。将所需包安装到同一个 DSH profile。
 
 选择已保存的角色版本、玩家身份和开场，填写并审阅初始场景/事实，再点击“开始故事”。角色描述、性格、情境和 persona 描述作为固定来源交给共享 GM；示例对话只作写法参考。启动模型由 DSH/GM 继承，节点路由可在 Loop 配置。
 
@@ -44,7 +44,7 @@ PNG 读取优先 ccv3，否则 chara；支持常见 tEXt 编码。优先元数�
 
 ## 阅读稿与完整故事存档
 
-“故事迁移”导出当前原生会话的 Markdown/TXT 阅读稿或完整故事存档。阅读稿来自 LastStep 的当前正式正文投影，反映已采用的文字。
+“故事迁移”导出当前原生会话的 Markdown/TXT 阅读稿或完整故事存档。阅读稿读取 LastStep 的 `storyHistory.records`，每个逻辑回合只保留当前事实版本下已接受的当前正文。新事实尚无已接受正文时，该回合没有可导出的正文。旧版 LastStep 和旧故事仍使用原有正文读取；已知有修订事实或正文却缺少有效历史服务时，明确返回 `EFFECTIVE_HISTORY_UNAVAILABLE`。
 
 完整存档使用 dsh-rp-saved-story/schemaVersion1、identityMode=preserve，包含祖先、原始 headers/events/inheritedEventCount、所需插件状态与可选会话 Loop 政策。只捕获空闲且没有待执行输入的故事；内容或来源在捕获期间变化会要求显式重试。
 
