@@ -6,7 +6,7 @@ import {buildDependencySummary,collectAssetDefaults,collectAssetDependencies,mer
 
 const ownerNames=['database','lastStep','gm','storyKit'],restoreOrder=['database','lastStep','context','gm','storyKit']
 const packages={database:'dsh-rp-database',lastStep:'dsh-rp-last-step',context:'dsh-rp-context',gm:'dsh-rp-gm',storyKit:'dsh-rp-story-kit',loop:'dsh-loop-studio'}
-const stages=new Set(['host.first','host.continuation','rp-context.prepare','rp-context.summarize','rp-last-step.migrate','rp-last-step.assemble','rp-last-step.render'])
+const stages=new Set(['host.first','host.continuation','rp-gm.revise','rp-context.prepare','rp-context.summarize','rp-last-step.migrate','rp-last-step.assemble','rp-last-step.render'])
 const queues=new Map()
 function validationView(input){let view;try{view=copy(input)}catch{fail('RESTORE_PAYLOAD_INVALID','存档不能包含不可序列化内容。')}for(const row of Array.isArray(view?.sessions)?view.sessions:[])if(object(row?.header)&&Object.hasOwn(row.header,'delegationDepth')&&row.header.delegationDepth===undefined)delete row.header.delegationDepth;return view}
 function minimalSnapshot(input){if(!object(input)||!Number.isSafeInteger(input.schemaVersion)||input.schemaVersion<1||typeof input.format!=='string'||typeof input.identityMode!=='string'||typeof input.exportedAt!=='string'||typeof input.selectedSessionId!=='string'||!input.selectedSessionId||!Array.isArray(input.sessions)||!object(input.pluginState)||!Array.isArray(input.resources)||!Array.isArray(input.requirements)||input.sessions.some(row=>!object(row)||!object(row.header)||typeof row.header.id!=='string'))fail('RESTORE_PAYLOAD_INVALID','存档传输 envelope 无效。');sessionIds(input.sessions.map(row=>row.header.id));serializableData(validationView(input))}

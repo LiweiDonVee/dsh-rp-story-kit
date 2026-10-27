@@ -1,8 +1,20 @@
 # Validation scope
 
+## Current 0.2.0 native combination evidence — 2026-10-27
+
+The V6 seven-package inputs passed Story Kit's **13/13 existing default-OFF transfer phases** on official DSH 0.2.1-rc.3, preserving current style B, pinned sources and zero historical model work during cold restore/read; browser and cleanup errors were empty. Its raw SHA256 is `60f848230a1bcaf07182836fc0fc60d0fe321cbc321711004d651b63d6f8ab70`. The separate five-group approval/regeneration run passed **5/5 actual functional groups**, including opaque pending/completed different-home cold restoration with every model stage zero, child-owned writing, actual activation and current effective reading. The nine-scenario Studio regression/defaults readback remains another separately attributed run.
+
+The V6 manifest SHA256 is `79aa41cb6b3602b3fa2a02cf27cdd6b0bd3b72f34c7ba6a2b078a620b765aeeb`; the tested Story Kit 0.2.0 archive is `d4ab826a1bd00337bb4f47a534ae6d186a0dbefa45fb5d4ee2b3e5a225335f5d`. [Studio's current evidence](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/native-acceptance.md#v6-approval-and-regeneration) records source/raw identities, actual counters and limits. The five-group raw runner retains `checkpoint-passed` / `finalAcceptance:false`; release archives and final CI are separate gates. Check downloads against the matching release's SHA256SUMS.
+
+## Component validation scope
+
 Automated checks cover parser/store/source integrity, strict seed, document content, launch/reading, owner transfer and SavedStory coordination; UI tests use real React components and typed owner boundaries. Native adapter tests cover public persistence arguments, fresh original-log initialization, close/cold/resume ordering, owner reads, exact prefixes, inherited counts, cancellation and the narrowly allowed header/end-seed behavior.
 
 Deterministic service/host fixtures exist only under tests. They do not establish native tool acceptance, model quality or actual rc.3 cross-home recovery. Their event envelopes use public Session types; no test fixture is shipped as a production runtime/provider.
+
+## 0.2.0 effective-reading checkpoint
+
+Focused consumer tests exercise public StoryHistory selection when canonical narratives retain accepted old versions, current facts without prose, explicit effective-history failure, actual method availability and legacy fallback. SavedStory provider fixtures check opaque envelope forwarding and owner preflight/restore refusals. These are consumer-contract checks; the later V6 native package combination is recorded above. The historical 0.1.0 result below retains its original identity and scope.
 
 ## Actual native result — 2026-10-25, rev5
 
