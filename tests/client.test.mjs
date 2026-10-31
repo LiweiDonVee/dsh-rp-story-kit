@@ -13,7 +13,7 @@ test('native client owns sidebar/header/blank/Studio entry lifecycle and uses ho
   module.exports.apply(ctx)
   assert.equal(styles.length,1);assert.equal(tabs[0].kind,'rp-story-kit')
   assert.deepEqual(registered.map(row=>row.descriptor.name),['sidebar.right.pane.tab','conversation.session.header.actions','conversation.hero.options','rp.studio.workspace.actions'])
-  const entry=registered[1],button=entry.Component(entry.descriptor.inject());button.props.onClick();assert.deepEqual(opened,['rp-story-kit'])
+  const entry=registered[1];entry.descriptor.inject().open();assert.deepEqual(opened,['rp-story-kit'])
   const body=registered[0].Component({sessionId:'story',useTabInfo:()=>({tab:{visible:false}})});assert.equal(body.props.visible,false);assert.equal(body.key,'story')
   for(const dispose of disposers.reverse())dispose();assert.equal(styles.length,0);assert.equal(registered.length,0);assert.equal(tabs.length,0)
 })

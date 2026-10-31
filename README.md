@@ -2,17 +2,19 @@
 
 DSH 原生角色与玩家资产库：导入 Character Card V2/V3 JSON 或常见 chara/ccv3 静态 PNG，保留原件，编辑版本、玩家身份与多个开场，交换数据内容包。世界设定卡也可以直接保存。
 
-**Story Kit 0.2.0** 提供版本化资产、共享 GM 故事启动、Markdown/TXT 阅读稿、内容包交换与精确身份故事存档。阅读稿采用 LastStep 的当前有效正文。各入口按已安装插件的实际能力启用。验证方法与适用边界见 [验收说明](docs/acceptance.md)。
+**0.2.1 界面更新：** 安装 RP Studio 1.5.0 后，从 **RP ▾ → 角色与素材** 打开完整原生页面；会话顶部与空白页的重复入口自动收纳。未安装或卸载 Studio 时恢复独立入口，右侧原生页签始终保留。管理界面的字体和字号随宿主设置变化。
+
+**Story Kit 0.2.1** 提供版本化资产、共享 GM 故事启动、Markdown/TXT 阅读稿、内容包交换与精确身份故事存档。阅读稿采用 LastStep 的当前有效正文。各入口按已安装插件的实际能力启用。验证方法与适用边界见 [验收说明](docs/acceptance.md)，本版改动见[更新记录](CHANGELOG.md)。
 
 ## 安装与使用
 
 目标宿主 **DSH 0.2.1-rc.3**，Node >=24。从项目 [Releases](https://github.com/LiweiDonVee/dsh-rp-story-kit/releases) 获取安装包，完全退出 DSH 后安装到目标 profile：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-story-kit-0.2.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-story-kit-0.2.1.tgz
 ```
 
-重启 DSH 后，点击会话顶部或空白会话的“资产”，打开右侧原生面板；若安装 RP Studio，工作区内也有入口。资产库无需 GM、Database 或 LastStep 即可使用。侧栏尺寸、全屏与主题由宿主管理。
+重启 DSH 后，安装 RP Studio 1.5.0 时从 **RP ▾ → 角色与素材** 打开右侧原生面板；单独安装时点击会话顶部或空白会话的“资产”。资产库无需 GM、Database 或 LastStep 即可使用。侧栏尺寸、全屏与主题由宿主管理。
 
 - 从“导入资产”选择 JSON/PNG，或粘贴 JSON。导入后审阅原件、来源提示与两个或更多开场。
 - 从“新建角色资产”创作角色或世界设定；“新建玩家身份”保存轻量玩家角色。同名资产有不同 ID。
@@ -59,13 +61,13 @@ GM reservation 是执行门。只有宿主成功 create 并 flush、且任务已
 ## 开发与验证
 
 ```powershell
-pnpm install --frozen-lockfile --ignore-scripts
+pnpm install --frozen-lockfile
 pnpm check
 pnpm skill:check
 pnpm package
 ```
 
-Node 24、pnpm 11.9.0；生产 host 为独立 ESM bundle，client 使用 DSH 已有 React 18。没有兄弟仓库源码依赖。包和 SHA256SUMS 位于 artifacts。CI 配置覆盖 Windows/Ubuntu；本地结果与远端 CI、真实 rc.3 宿主验收分别报告。
+Node 24、pnpm 11.9.0；生产 host 为独立 ESM bundle，client 使用 DSH 已有 React 18。没有兄弟仓库源码依赖。包和 SHA256SUMS 位于 artifacts。CI 配置覆盖 Windows/Ubuntu；本地结果、远端 CI、既有 rc.3 原生证据与本次 rc.5 界面验收分别报告。
 
 数据位于 $DSH_HOME/app-data/rp-story-kit/story-kit-store.json，默认 ~/.dsh。关闭宿主后可备份资产数据；不要将含原件的本机存储当作公开日志上传。
 
