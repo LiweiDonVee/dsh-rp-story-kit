@@ -1,6 +1,6 @@
 {
   "name": "dsh-rp-story-kit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DSH 原生角色与玩家资产库：来源审阅、JSON/PNG 导入与数据内容包",
   "license": "MIT",
   "type": "module",
