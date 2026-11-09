@@ -4,14 +4,14 @@ DSH 原生角色与玩家资产库：导入 Character Card V2/V3 JSON 或常见 
 
 **0.2.1 界面更新：** 安装 RP Studio 1.5.0 后，从 **RP ▾ → 角色与素材** 打开完整原生页面；会话顶部与空白页的重复入口自动收纳。未安装或卸载 Studio 时恢复独立入口，右侧原生页签始终保留。管理界面的字体和字号随宿主设置变化。
 
-**Story Kit 0.2.1** 提供版本化资产、共享 GM 故事启动、Markdown/TXT 阅读稿、内容包交换与精确身份故事存档。阅读稿采用 LastStep 的当前有效正文。各入口按已安装插件的实际能力启用。验证方法与适用边界见 [验收说明](docs/acceptance.md)，本版改动见[更新记录](CHANGELOG.md)。
+**Story Kit 0.2.2** 提供版本化资产、共享 GM 故事启动、Markdown/TXT 阅读稿、内容包交换与精确身份故事存档。阅读稿采用 LastStep 的当前有效正文。各入口按已安装插件的实际能力启用。验证方法与适用边界见 [验收说明](docs/acceptance.md)，本版改动见[更新记录](CHANGELOG.md)。
 
 ## 安装与使用
 
-目标宿主 **DSH 0.2.1-rc.3**，Node >=24。从项目 [Releases](https://github.com/LiweiDonVee/dsh-rp-story-kit/releases) 获取安装包，完全退出 DSH 后安装到目标 profile：
+目标宿主 **DSH 0.2.2-rc.1**，Node >=24。从项目 [Releases](https://github.com/LiweiDonVee/dsh-rp-story-kit/releases) 获取安装包，完全退出 DSH 后安装到目标 profile：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-story-kit-0.2.1.tgz
+dsh plugin --profile desktop add ./dsh-rp-story-kit-0.2.2.tgz
 ```
 
 重启 DSH 后，安装 RP Studio 1.5.0 时从 **RP ▾ → 角色与素材** 打开右侧原生面板；单独安装时点击会话顶部或空白会话的“资产”。资产库无需 GM、Database 或 LastStep 即可使用。侧栏尺寸、全屏与主题由宿主管理。
@@ -72,3 +72,12 @@ Node 24、pnpm 11.9.0；生产 host 为独立 ESM bundle，client 使用 DSH 已
 数据位于 $DSH_HOME/app-data/rp-story-kit/story-kit-store.json，默认 ~/.dsh。关闭宿主后可备份资产数据；不要将含原件的本机存储当作公开日志上传。
 
 随包提供 adapting-roleplay-story-assets skill，包含字段映射和“设定卡/示例不是事实”的完整行为例子。参阅 [API 与架构](docs/architecture.md)、[skill 验证范围](docs/skill-evaluation.md)、[公开合成角色卡](examples/harbor-v2.json) 和 [玩家身份](examples/traveler-persona.json)。MIT License。
+
+
+## DSH 0.2.2 compatibility
+
+This release requires DSH `>=0.2.2-rc.1 <0.3.0-0`; the exact integration target is Desktop `0.2.2-rc.1`. Future versions in that range have not been individually accepted. Install Database/Context `0.3.2`, LastStep `0.4.2`, and GM/StoryKit `0.2.2` together when using story forks or saved-story restoration.
+
+DSH 0.2.2 ordinary forks preserve a verified event prefix without adding a parent to the canonical Session header. The host-only `rpGM.sessionLineage({sessionId, signal})` returns `{sessionId, parentSessionId: string | null, inheritedEventCount}` from GM's existing durable binding and actual Session observations. RP owners derive ancestry from this result; canonical headers and event logs retain their original bytes. Conflicting legacy header parents or changed prefixes are rejected.
+
+Saved-story format remains schema 1. StoryKit derives the host-only restore argument `lineages: [{sessionId, parentSessionId: string | null}]` from existing `pluginState.gm.payload.bindings`, with one row per destination and `null` for roots. Database, Context, and LastStep verify the actual destination Session prefixes before using this mapping. It is not a model tool or a public owner route.
