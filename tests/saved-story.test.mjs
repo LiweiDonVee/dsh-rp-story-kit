@@ -21,6 +21,7 @@ test('DSH 0.2.2 forks retain GM lineage without adding a parent to canonical hea
   assert.throws(()=>api.validateSavedStory(bad),{code:'RESTORE_PAYLOAD_INVALID'});
   const destination=await savedFixture(t),seen=[];
   for(const name of ['database','lastStep','context']){const restore=destination.services[name].restoreState;destination.services[name].restoreState=async input=>{seen.push(input.lineages);return restore(input);};}
+  for(const method of ['preflightRestore','restoreState']){const operation=destination.services.gm[method];destination.services.gm[method]=async input=>{assert.equal(Object.hasOwn(input,'lineages'),false,'GM derives lineage from its own payload and rejects extra transport fields');return operation(input);};}
   assert.equal((await coordinator(destination).restoreSavedStory({snapshot:bundle,restoreId:'rc1-lineage'})).status,'complete');
   assert.equal(seen.length,3);for(const rows of seen)assert.deepEqual(rows,[{sessionId:'parent',parentSessionId:null},{sessionId:'child',parentSessionId:'parent'}]);
 })
