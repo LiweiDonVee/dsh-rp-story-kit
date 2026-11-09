@@ -12,6 +12,19 @@ test('saved export carries complete ancestry, authoritative seed counts and only
   const{snapshot:result}=await snapshot(t)
   assert.equal(result.identityMode,'preserve');assert.deepEqual(result.sessions.map(item=>item.header.id),['parent','child']);assert.equal(result.sessions[1].inheritedEventCount,1);assert.equal(result.pluginState.storyKit.payload.characters.length,1);assert.equal(result.loopPolicies.length,2)
 })
+test('DSH 0.2.2 forks retain GM lineage without adding a parent to canonical headers',async t=>{
+  const{snapshot:bundle}=await snapshot(t);delete bundle.sessions[1].header.parentSession;
+  const result=api.validateSavedStory(bundle);
+  assert.deepEqual(result.sessions.map(row=>row.header.id),['parent','child']);
+  assert.equal(Object.hasOwn(result.sessions[1].header,'parentSession'),false);
+  const bad=structuredClone(bundle);bad.sessions[1].events[0].data.preset='changed';
+  assert.throws(()=>api.validateSavedStory(bad),{code:'RESTORE_PAYLOAD_INVALID'});
+  const destination=await savedFixture(t),seen=[];
+  for(const name of ['database','lastStep','context']){const restore=destination.services[name].restoreState;destination.services[name].restoreState=async input=>{seen.push(input.lineages);return restore(input);};}
+  for(const method of ['preflightRestore','restoreState']){const operation=destination.services.gm[method];destination.services.gm[method]=async input=>{assert.equal(Object.hasOwn(input,'lineages'),false,'GM derives lineage from its own payload and rejects extra transport fields');return operation(input);};}
+  assert.equal((await coordinator(destination).restoreSavedStory({snapshot:bundle,restoreId:'rc1-lineage'})).status,'complete');
+  assert.equal(seen.length,3);for(const rows of seen)assert.deepEqual(rows,[{sessionId:'parent',parentSessionId:null},{sessionId:'child',parentSessionId:'parent'}]);
+})
 test('stable export refuses changing content revisions and missing authoritative inherited metadata',async t=>{
   const source=await savedFixture(t,{source:true});source.flags.changeDuringExport=true;await assert.rejects(coordinator(source).exportSavedStory({sessionId:'child'}),{code:'EXPORT_CHANGED'})
   source.flags.changeDuringExport=false;delete source.sessions.get('child').inheritedEventCount;await assert.rejects(coordinator(source).exportSavedStory({sessionId:'child'}),{code:'EXPORT_SOURCE_METADATA_MISSING'})
