@@ -29,8 +29,9 @@ export async function createStoryKitHost(ctx,options={}){
   async function mutation(input,work){return run(input,async signal=>{const result=await work(signal);for(const listener of subscribers){try{listener({revision:result.revision})}catch{/* Metadata observers cannot reject a committed owner change. */}}return result})}
   const service={
     apiVersion:1,
-    state(input={}){return run(input,async signal=>{const pendingLaunches=await launches.pendingLaunches({signal}),state=await store.snapshot();return{revision:state.revision,characters:state.characters.map(summary),personas:state.personas.map(summary),pendingLaunches,capabilities:{databaseImport:typeof get('rpDatabase')?.import==='function',packExport:true,packImport:true,launch:launches.available(),readingExport:reading.available(),savedStoryExport:saved.exportAvailable(),savedStoryPreview:saved.previewAvailable(),savedStoryRestore:saved.restoreAvailable()}}})},
+    state(input={}){return run(input,async signal=>{const pendingLaunches=await launches.pendingLaunches({signal}),state=await store.snapshot();return{revision:state.revision,characters:state.characters.map(summary),personas:state.personas.map(summary),templates:state.templates.map(template=>({templateId:template.id,title:template.title})),pendingLaunches,capabilities:{databaseImport:typeof get('rpDatabase')?.import==='function',packExport:true,packImport:true,launch:launches.available(),readingExport:reading.available(),savedStoryExport:saved.exportAvailable(),savedStoryPreview:saved.previewAvailable(),savedStoryRestore:saved.restoreAvailable()}}})},
     asset:input=>run(input,()=>store.asset(input)),
+    template:input=>run(input,()=>store.template(input)),
     source:input=>run(input,()=>store.source(input)),
     importAsset:input=>mutation(input,()=>store.importAsset(input)),
     createCharacter:input=>mutation(input,()=>store.createCharacter(input)),

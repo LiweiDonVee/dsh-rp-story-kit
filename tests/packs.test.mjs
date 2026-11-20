@@ -32,6 +32,17 @@ test('content pack round-trip remaps every asset/database/profile/template refer
   assert.equal(db.imported[0].entries[0].readOnly,true);assert.equal(db.imported[0].entries[0].mode,'required');assert.equal(rp.imported[0].status,'draft');assert.equal(rp.imported[0].entries[0].locked,true)
   const stored=(await destination.store.snapshot()).templates[0]
   assert.deepEqual(stored.character,characterMap);assert.deepEqual(stored.persona,personaMap);assert.equal(stored.sources[0].databaseId,'database-1');assert.equal(stored.profile.profileId,'profile-1')
+  const before=await readFile(join(destination.directory,'story-kit-store.json'),'utf8'),templateId=result.mappings.storyTemplates.start
+  assert.deepEqual((await destination.service.state({})).templates,[{templateId,title:'雾港起点'}])
+  assert.deepEqual(await destination.service.template({templateId}),{revision:result.revision,template:stored})
+  const detached=(await destination.service.template({templateId})).template
+  detached.initialFacts.items[0].text='调用方的改写';detached.sources[0].databaseId='other';detached.character.version=99
+  const restarted=await createStoryKitHost({get:name=>({rpDatabase:db,rpLastStep:rp})[name]},{directory:destination.directory});t.after(()=>restarted.close())
+  assert.deepEqual(await restarted.template({templateId}),{revision:result.revision,template:stored})
+  assert.equal(await readFile(join(destination.directory,'story-kit-store.json'),'utf8'),before)
+  await destination.service.saveCharacter({character:{...asset,openings:asset.openings.map(opening=>({...opening,text:'新版本原文'}))},expectedRevision:result.revision})
+  assert.deepEqual((await restarted.template({templateId})).template,stored)
+  assert.equal((await restarted.asset({kind:'character',...stored.character})).asset.openings.find(opening=>opening.id===stored.openingId).text,asset.openings.find(opening=>opening.id===stored.openingId).text)
   assert.equal(result.reviewRequired,true)
   assert.equal((await destination.service.source({sourceId:asset.sourceId})).source.rawText,rawText)
 })
@@ -45,6 +56,27 @@ test('preview catches unresolved references, executable resources, hashes and pr
   assert.equal(db.imported.length,0);assert.equal((await service.state({})).revision,0)
   const preview=await service.previewPack({pack:{...base,requirements:['unknown-plugin']}})
   assert.equal(preview.diagnostics[0].code,'REQUIREMENT_UNAVAILABLE')
+})
+
+test('same-title imported templates retain separate identities and exact null or omitted profile seeds',async t=>{
+  const{service,store,directory}=await setup(t)
+  const character={id:'c',version:4,name:'公开合成角色',openings:[{id:'first',name:'开场',text:'第一段原文\n第二行'}],databaseRefs:[]},persona={id:'p',version:3,name:'公开合成身份',description:'由玩家决定行动'}
+  const seed={initialScene:{schemaVersion:1,title:'已审阅场景',location:'码头',time:'清晨',presentActorIds:['traveler']},initialFacts:{schemaVersion:1,items:[{id:'fact-original',text:'已经退潮'}]}}
+  const base={title:'相同名称',character:{assetId:'c',version:4},persona:{assetId:'p',version:3},openingId:'first',sources:[],...seed}
+  const pack={format:'dsh-rp-story-pack',schemaVersion:1,assets:[{kind:'character',asset:character},{kind:'persona',asset:persona}],databases:[],profiles:[],storyTemplates:[{...base,id:'default',profile:null},{...base,id:'inherit'}],resources:[],requirements:[]}
+  const imported=await service.importPack({pack,expectedRevision:0}),before=await readFile(join(directory,'story-kit-store.json'),'utf8')
+  let changes=0;const unsubscribe=service.subscribe(()=>changes++);t.after(unsubscribe)
+  const summaries=(await service.state({})).templates
+  assert.deepEqual(summaries,[{templateId:imported.mappings.storyTemplates.default,title:base.title},{templateId:imported.mappings.storyTemplates.inherit,title:base.title}])
+  assert.notEqual(summaries[0].templateId,summaries[1].templateId)
+  for(const[original,index]of pack.storyTemplates.map((template,index)=>[template,index])){
+    const result=await service.template({templateId:summaries[index].templateId}),template=result.template
+    assert.equal(result.revision,imported.revision)
+    assert.deepEqual(template,{...original,id:summaries[index].templateId,character:imported.mappings.assets[key('c',4)],persona:imported.mappings.assets[key('p',3)]})
+    assert.equal(Object.hasOwn(template,'profile'),Object.hasOwn(original,'profile'))
+  }
+  assert.equal(changes,0);assert.equal((await store.snapshot()).revision,imported.revision)
+  assert.equal(await readFile(join(directory,'story-kit-store.json'),'utf8'),before)
 })
 
 test('provider conflict preserves completed ID maps and request IDs so a retry resumes after restart',async t=>{

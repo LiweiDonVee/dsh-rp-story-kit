@@ -47,7 +47,8 @@ export function createStoryKitStore({directory}) {
   function save(kind,input,expectedRevision){const captured=copy(input);return transact(expectedRevision,state=>{if(!object(captured)||!captured.id||!captured.version)fail('INVALID_ASSET','保存需要资产 ID 与明确 base version。');return appendAsset(state,kind,captured)})}
   return{
     snapshot:()=>read(state=>({revision:state.revision,characters:Object.values(state.characters).map(items=>items.at(-1)),personas:Object.values(state.personas).map(items=>items.at(-1)),templates:state.templates??[]})),
-    asset:({kind,assetId,version})=>read(state=>({revision:state.revision,asset:selectedAsset(state,kind,assetId,version)})),
+    template:({templateId})=>read(state=>{const id=identifier(templateId),template=(state.templates??[]).find(item=>item.id===id);if(!template)fail('TEMPLATE_NOT_FOUND','找不到所选故事模板。',404);return{revision:state.revision,template}}),
+    asset:({kind,assetId,version})=>read(state=>({revision:state.revision,asset:selectedAsset(state,kind,assetId,version),availableVersions:state[collection(kind)][hash(assetId)].map(item=>item.version)})),
     source:({sourceId})=>read(state=>{const source=state.sources[hash(identifier(sourceId))];if(!source)fail('SOURCE_NOT_FOUND','找不到原始来源。',404);const{id,format,rawText,dataBase64,sha256,provenance}=source;return{source:{id,format,...rawText!==undefined?{rawText}:{},...dataBase64!==undefined?{dataBase64}:{},sha256,provenance}}}),
     resource:({resourceId})=>read(state=>{const resource=state.resources[hash(identifier(resourceId))];if(!resource)fail('RESOURCE_NOT_FOUND','找不到资源。',404);return resource}),
     descriptors:({sourceId})=>read(state=>state.descriptors[hash(identifier(sourceId))]??[]),

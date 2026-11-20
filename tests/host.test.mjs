@@ -29,6 +29,21 @@ test('standalone asset library creates editable characters and personas while re
   await assert.rejects(service.exportReading({}),{code:'CAPABILITY_UNAVAILABLE'})
 })
 
+test('empty-library template reads keep stable not-found and host cancellation/unload boundaries',async t=>{
+  const{service,store}=await setup(t)
+  assert.deepEqual((await service.state({})).templates,[])
+  const read=store.template;let reads=0
+  store.template=input=>{reads++;return read(input)}
+  const controller=new AbortController();controller.abort()
+  await assert.rejects(service.template({templateId:'missing',signal:controller.signal}),{name:'AbortError'})
+  assert.equal(reads,0)
+  await assert.rejects(service.template({templateId:'missing'}),{code:'TEMPLATE_NOT_FOUND',status:404})
+  assert.equal(reads,1)
+  await service.close()
+  await assert.rejects(service.template({templateId:'missing'}),{code:'UNAVAILABLE',status:503})
+  assert.equal(reads,1)
+})
+
 test('embedded worldbook delegates full original card to Database then links a new immutable asset version',async t=>{
   let received
   const database={import:async input=>{received=input;return{revision:8,databaseId:'new-book',version:1,diagnostics:[{code:'ST_MACROS_LITERAL',severity:'warning',message:'inert'}]}}}

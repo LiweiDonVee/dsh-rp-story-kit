@@ -3,7 +3,7 @@ import {afterEach,it,expect,vi} from 'vitest'
 import {cleanup,render,screen,fireEvent,waitFor,act} from '@testing-library/react'
 
 const ui=await import('../../src/StoryActions.jsx').catch(()=>({}))
-afterEach(cleanup)
+afterEach(()=>{cleanup();vi.restoreAllMocks()})
 const character={id:'card',version:2,name:'设定',description:'设定内容',openings:[{id:'alternate-1',name:'选定开场',text:'原定开场'}],examples:'示例不是事实',databaseRefs:[],profileRef:{profileId:'linked',version:3}}
 const capabilities={launch:true,readingExport:true,savedStoryExport:true,savedStoryPreview:true,savedStoryRestore:true}
 const saved={format:'dsh-rp-saved-story',schemaVersion:1,identityMode:'preserve',exportedAt:'2026-10-25T00:00:00.000Z',selectedSessionId:'original',sessions:[{header:{id:'original',agentPreset:'rp-gm'},events:[],inheritedEventCount:0}],pluginState:{database:{schemaVersion:1,revision:0,payload:{}},lastStep:{schemaVersion:1,revision:0,payload:{}},gm:{schemaVersion:1,revision:0,payload:{}},storyKit:{schemaVersion:1,revision:0,payload:{}},context:null},resources:[],requirements:[]}
@@ -22,6 +22,19 @@ it('pending launch UI resumes only the persisted launchId and does not resubmit 
   const Pending=requireComponent('PendingLaunches'),requests=[],navigate=vi.fn(),client={resumeLaunch:async input=>{requests.push(input);return{sessionId:'existing',binding:{},status:'starting'}}}
   render(<Pending launches={[{launchId:'original-launch',title:'待继续故事',status:'failed',errorCode:'START_INTERRUPTED',createdAt:'2026-10-25'}]} client={client} visible navigate={navigate} capabilities={capabilities}/>)
   fireEvent.click(screen.getByRole('button',{name:'继续启动：待继续故事'}));await waitFor(()=>expect(navigate).toHaveBeenCalledWith('existing'));expect(Object.keys(requests[0]).sort()).toEqual(['launchId','signal']);expect(requests[0].launchId).toBe('original-launch')
+})
+
+it.each(['初始场景标题','初始位置'])('blocks an explicitly blank %s before allocating a launch ID',label=>{
+  const Launch=requireComponent('StoryLaunch'),launch=vi.fn(),id=vi.spyOn(crypto,'randomUUID')
+  render(<Launch character={character} personaRef={JSON.stringify(['player',1])} openingId="alternate-1" client={{launch}} capabilities={capabilities} compact/>)
+  fireEvent.change(screen.getByLabelText(label),{target:{value:'   '}})
+  expect(screen.getByRole('button',{name:'以此开场开始'})).toBeDisabled()
+  expect(screen.getByText('请在高级启动设置中填写非空的初始场景标题和初始位置。')).toBeVisible()
+  fireEvent.click(screen.getByRole('button',{name:'以此开场开始'}))
+  expect(id).not.toHaveBeenCalled();expect(launch).not.toHaveBeenCalled()
+  fireEvent.change(screen.getByLabelText(label),{target:{value:'补全内容'}})
+  expect(screen.getByRole('button',{name:'以此开场开始'})).toBeEnabled()
+  expect(screen.queryByText('请在高级启动设置中填写非空的初始场景标题和初始位置。')).toBeNull()
 })
 
 it('saved-story UI distinguishes deferred graph checks and continues a pending restore using the same explicit restoreId',async()=>{

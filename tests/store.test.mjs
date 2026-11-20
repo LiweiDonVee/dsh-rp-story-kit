@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,readFile,rm} from 'node:fs/promises'
+import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 
@@ -9,6 +9,18 @@ const rawText=await readFile(new URL('./fixtures/harbor-v2.json',import.meta.url
 async function setup(t){assert.equal(typeof api.createStoryKitStore,'function','versioned asset store is available');const directory=await mkdtemp(join(tmpdir(),'story-kit-'));t.after(()=>rm(directory,{recursive:true,force:true}));return{directory,store:api.createStoryKitStore({directory})}}
 const character=(store,saved,version=saved.version)=>store.asset({kind:'character',assetId:saved.assetId,version}).then(result=>result.asset)
 const persona=(store,saved,version=saved.version)=>store.asset({kind:'persona',assetId:saved.assetId,version}).then(result=>result.asset)
+
+test('legacy stores without templates read as an empty catalog without rewriting the owned file',async t=>{
+  const{store,directory}=await setup(t)
+  await store.createPersona({persona:{name:'公开合成玩家',description:''},expectedRevision:0})
+  const legacy=await store.rawState();delete legacy.templates
+  const file=join(directory,'story-kit-store.json'),raw=JSON.stringify(legacy)
+  await writeFile(file,raw,'utf8')
+  const restarted=api.createStoryKitStore({directory})
+  assert.deepEqual((await restarted.snapshot()).templates,[])
+  await assert.rejects(restarted.template({templateId:'not-present'}),{code:'TEMPLATE_NOT_FOUND',status:404})
+  assert.equal(await readFile(file,'utf8'),raw)
+})
 
 test('imported original and immutable character versions survive restart without changing a pinned version',async t=>{
   const{store,directory}=await setup(t)

@@ -10,8 +10,9 @@ POST /api/rp-story-kit/request accepts exactly {action,...fields}; GET /api/rp-s
 
 | Method | Input fields | Result |
 | --- | --- | --- |
-| state | none | revision, characters, personas, pendingLaunches, capabilities |
-| asset | kind, assetId, version? | revision, asset |
+| state | none | revision, characters, personas, templates, pendingLaunches, capabilities |
+| asset | kind, assetId, version? | revision, asset, availableVersions |
+| template | templateId | revision, template |
 | source | sourceId | source with exact original/provenance |
 | importAsset | format=json + rawText, or format=png + dataBase64; name? | revision, assetId, version, sourceId, diagnostics, embeddedWorldbooks |
 | createCharacter / saveCharacter | character | revision, assetId, version |
@@ -28,6 +29,10 @@ POST /api/rp-story-kit/request accepts exactly {action,...fields}; GET /api/rp-s
 | restoreSavedStory | snapshot, restoreId | status, sessionId, diagnostics |
 
 AssetRef is {assetId,version}; summaries are {assetId,version,name,sourceId?,avatarResourceId?}. capabilities is {databaseImport,packExport,packImport,launch,readingExport,savedStoryExport,savedStoryPreview,savedStoryRestore}, all booleans based on actual compatible services and implemented mechanisms. Pending launch summaries contain launchId/title/status/createdAt and optional sessionId/errorCode. Create inputs omit id/version/sourceId. Character has name/description/personality/scenario/openings/examples/creator/databaseRefs and optional source/profile/avatar refs. Persona is name/description plus optional avatar/source refs.
+
+`state.templates` contains only `{templateId,title}` summaries of imported story templates; stores predating templates return an empty list. The public client exposes `template({templateId,signal})` through the same authenticated request route. It returns `{revision,template}`, where `template.id` equals the requested `templateId` and the remaining fields are the saved `title`, exact `character`/`persona` AssetRefs, `openingId`, `sources`, optional `profile`, `initialScene` and `initialFacts`. These are the already-remapped importPack values; reading does not substitute newer asset versions, alter seed or profile null/omission, change the library revision, emit a changed event or start a story. A nonexistent template ID returns `TEMPLATE_NOT_FOUND` with HTTP 404; missing/blank/invalid IDs or extra route fields return `INVALID_REQUEST` with HTTP 400. Templates have no independent version field. Starting still uses the existing explicit `launch` operation after reviewing the selected content.
+
+`asset.availableVersions` lists the versions actually stored for that asset; exact-ID restoration may leave gaps. The native start view uses this list rather than synthesizing a numeric range. `rp-story-kit` sidebar navigation accepts `params.view` of `start`, `library`, `import`, `packs`, or `transfer`; the client consumes navigation revision so repeated owner navigation takes effect. The start scene mounts only when first shown and retains its form across hiding. It shows saved character, persona and opening selections together, preferring an explicit selection or the sole saved asset; multiple assets require a choice. Source diagnostics load independently of the saved opening. Selection/preview never launches a model. The compact Start action confirms the visible selections and seed; an unchanged retry reuses the same captured request and launchId, while edits discard that captured request. Submitted choices stay disabled until the view request completes or is cancelled by leaving the page.
 
 Reading export prefers the actual LastStep.storyHistory method and uses only its selected records. LastStep.narratives remains canonical audit/acceptance history and is a fallback only for legacy stories when storyHistory is absent. Canonical narrativeVersion metadata or a public Database.factReviewProjection group with active facts/pending review requires the effective reader; absent support returns EFFECTIVE_HISTORY_UNAVAILABLE. Actual projection authorization/source failures remain errors. Capability flags alone do not make a legacy story require the new reader. readingExport reports whether an actual reader method exists; the selected story's source checks run during export.
 
